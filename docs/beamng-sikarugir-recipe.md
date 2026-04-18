@@ -120,17 +120,60 @@ Wine may place the window off-screen by default. Use `Mission Control`
 (swipe up three fingers) to find it, drag to a visible area, and click to
 focus.
 
-## Current blocker (2026-04-17)
+## Additional runtime components (required)
 
-CEF subprocesses crash on launch — approximately 30–170 `winedbg --auto`
-invocations per BeamNG session. The main process survives and the game
-rendering window exists, but the UI never renders and the game stalls
-around game-time 6–10s.
+The initial recipe above reaches a rendering BeamNG window but CEF
+subprocesses crash (~170 `winedbg --auto` invocations per session).
+Installing the missing Microsoft Visual C++ and font runtime via
+winetricks drops the crash count dramatically and makes the game render
+its window at full size. Run once per wrapper:
 
-The freetype path fix reduces crash count from 167 → 34 but doesn't
-eliminate them. Next investigation: CEF on Wine 10 + DXMT likely needs
-additional component installs (e.g. `corefonts`, `webcore` via
-winetricks). Tracked in [issue #1](https://github.com/EricSpencer00/Whisky/issues/1).
+```bash
+brew install cabextract  # winetricks dependency
+curl -fL -o /tmp/winetricks \
+  https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks
+chmod +x /tmp/winetricks
+
+WRAPPER=~/Applications/Sikarugir/BeamNG.app
+# libinotify needs to be alongside wineserver (@rpath resolution)
+cp -f "$WRAPPER/Contents/Frameworks/libinotify.0.dylib" \
+      "$WRAPPER/Contents/SharedSupport/wswine.bundle/lib/"
+
+env \
+  DYLD_FALLBACK_LIBRARY_PATH="$WRAPPER/Contents/Frameworks:$WRAPPER/Contents/SharedSupport/wswine.bundle/lib" \
+  WINEPREFIX="$WRAPPER/Contents/SharedSupport/prefix" \
+  WINE="$WRAPPER/Contents/SharedSupport/wswine.bundle/bin/wine" \
+  WINESERVER="$WRAPPER/Contents/SharedSupport/wswine.bundle/bin/wineserver" \
+  PATH="$WRAPPER/Contents/SharedSupport/wswine.bundle/bin:/opt/homebrew/bin:$PATH" \
+  /tmp/winetricks -q corefonts vcrun2019 d3dcompiler_47
+```
+
+After this:
+- `winedbg --auto` crash count: 170 → 20 (per session)
+- BeamNG opens a full-size D3D11 window titled
+  `BeamNG.drive - 0.38.5.0.19602 - RELEASE - Direct3D11` via DXMT/Metal
+- Game log progresses to game-time ~7–10 s then stalls
+
+## Remaining blocker (2026-04-17)
+
+~20 `winedbg --auto` subprocesses still crash per run, and the BeamNG
+window stays black (CEF subprocess never completes its initial paint).
+The main process survives indefinitely at 30 % CPU / 950 MB RSS, so
+autostart.lua's 25 s-game-time gridmap_v2 load never executes (game's
+main loop is blocked on the CEF wait).
+
+Next investigations (not done yet):
+- `winetricks dotnet48` — some CEF versions require .NET Framework at
+  load time.
+- `winetricks -q --force ie8` to seed additional IE/MSHTML state.
+- Replace libcef.dll with a matched-version build from CEF's own
+  distribution that may have different subprocess-handling quirks.
+- Force CEF single-process mode via
+  `WINEDLLOVERRIDES` plus a Chromium-compatible wrapper around
+  `libcef.dll`'s entry points that injects `--single-process` into the
+  command line before `CefExecuteProcess`. Needs a small shim DLL.
+
+Tracked in [issue #1](https://github.com/EricSpencer00/Whisky/issues/1).
 
 ## Why this is the best-case today
 
