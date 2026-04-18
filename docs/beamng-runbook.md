@@ -57,8 +57,26 @@ below lands.
 CodeWeavers' `crossover-sources-26.1.0.tar.gz` ships **Wine 11.0** (vs the
 Whisky tarball's 7.7). Wine 11 has four years of
 `IDXGIResource::GetSharedHandle()` and CEF-interop work that Wine 7.7 doesn't.
-Once [`BuildWine`](../.github/workflows/BuildWine.yml) produces
-`Libraries.tar.gz` on a fork Release (tag `wine-vX.Y.Z`):
+A multi-arch (aarch64 + x86_64) Wine 11 Libraries bundle is published as the
+`wine-v26.1.0` Release on this fork.
+
+### Gotcha: code signing
+
+The binaries on the Release are **ad-hoc signed only** (done by the build
+script via `codesign --sign -`). That's enough for Whisky.app to run them —
+Whisky itself was distributed ad-hoc signed — but if you invoke the Wine
+binary directly from a terminal, macOS 26 hardened runtime may SIGKILL it
+(exit 137). The build script's codesign pass should already handle this for
+tarballs uploaded from CI; if you're running your own local build before that
+lands, run:
+
+```bash
+WHISKY_WINE="$HOME/Library/Application Support/com.isaacmarovitz.Whisky/Libraries/Wine"
+find "$WHISKY_WINE/bin" -type f -perm +111 -exec codesign --force --sign - {} +
+find "$WHISKY_WINE/lib/wine/aarch64-unix" -name '*.so' -exec codesign --force --sign - {} +
+```
+
+### Usage
 
 ```bash
 # Point Whisky's first-run installer at the fork's build
