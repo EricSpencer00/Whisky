@@ -4,6 +4,8 @@ opt_in_rules:
 
 excluded:
   - .build
+  - build
+  - build/SourcePackages
 
 file_header:
     severity: error
