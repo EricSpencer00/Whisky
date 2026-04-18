@@ -36,7 +36,7 @@ jobs:
       - name: Install build deps
         run: |
           brew update --auto-update || true
-          brew install bison flex mingw-w64 gst-plugins-base freetype gnutls molten-vk pkgconf sdl2 || true
+          brew install bison flex gst-plugins-base freetype gnutls molten-vk pkgconf sdl2 || true
 
       - name: Build Wine from CrossOver source
         env:

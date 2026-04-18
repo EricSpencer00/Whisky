@@ -53,7 +53,6 @@ require xcrun
 BREW_DEPS=(
   bison
   flex
-  mingw-w64
   gst-plugins-base
   freetype
   gnutls
@@ -61,6 +60,12 @@ BREW_DEPS=(
   pkgconf
   sdl2
 )
+
+# llvm-mingw (for aarch64 PE cross-compilation) is not in Homebrew core. We
+# download mstorsjo's prebuilt bundle (~116 MB).
+LLVM_MINGW_VERSION="${LLVM_MINGW_VERSION:-20260407}"
+LLVM_MINGW_TARBALL="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-macos-universal.tar.xz"
+LLVM_MINGW_URL="${LLVM_MINGW_URL:-https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/${LLVM_MINGW_TARBALL}}"
 
 check_brew() {
   command -v brew >/dev/null 2>&1 || {
@@ -76,6 +81,23 @@ check_brew() {
     echo "Run: brew install ${missing[*]}" >&2
     exit 1
   fi
+}
+
+install_llvm_mingw() {
+  local dest="$WORK_DIR/llvm-mingw"
+  if [ -x "$dest/bin/aarch64-w64-mingw32-clang" ]; then
+    log "llvm-mingw already present"
+  else
+    mkdir -p "$WORK_DIR"
+    log "Downloading llvm-mingw ${LLVM_MINGW_VERSION}"
+    curl -fL --retry 3 --max-time 600 -o "$WORK_DIR/$LLVM_MINGW_TARBALL" "$LLVM_MINGW_URL"
+    log "Extracting llvm-mingw"
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    tar -xJf "$WORK_DIR/$LLVM_MINGW_TARBALL" -C "$dest" --strip-components=1
+  fi
+  export PATH="$dest/bin:$PATH"
+  log "llvm-mingw in PATH: $(which aarch64-w64-mingw32-clang)"
 }
 
 # ---- fetch source ----
@@ -132,7 +154,7 @@ build_wine() {
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \
       --with-freetype --with-gnutls --with-gstreamer --with-mingw --with-opengl \
-      --with-vulkan --with-coreaudio --with-png --with-mpg123
+      --with-vulkan --with-coreaudio
   )
 
   log "Building wine64 with $JOBS jobs"
@@ -186,6 +208,7 @@ PLIST
 # ---- main ----
 main() {
   check_brew
+  install_llvm_mingw
   fetch_source
   build_wine
   package
