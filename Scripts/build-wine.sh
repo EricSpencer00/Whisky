@@ -178,12 +178,12 @@ build_wine() {
   export CFLAGS="-O2 -g -I$BREW_PREFIX/include"
   export LDFLAGS="-L$BREW_PREFIX/lib -L$BREW_PREFIX/opt/vulkan-loader/lib -L$BREW_PREFIX/opt/molten-vk/lib"
 
-  log "Configuring wine64 ($(nproc 2>/dev/null || sysctl -n hw.ncpu) cores)"
+  log "Configuring wine ($(nproc 2>/dev/null || sysctl -n hw.ncpu) cores, archs=arm64,x86_64)"
   (
     cd "$build64"
     "$src/configure" \
       --prefix="$prefix" \
-      --enable-win64 \
+      --enable-archs=arm64,x86_64 \
       --disable-tests \
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \
