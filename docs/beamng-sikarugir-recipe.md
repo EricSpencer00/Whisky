@@ -184,3 +184,54 @@ Metal-native D3D11 is the only path that reports feature level 11 on
 Apple Silicon without CodeWeavers' proprietary D3DMetal/GPTK binaries.
 This recipe gets BeamNG further than anything else we've tried in the
 Whisky family — just not yet to the main menu.
+
+## Best currently-working path: CrossOver 26
+
+Homebrew cask: `brew install --cask crossover` — CrossOver 26 is free for 14 days.
+
+```bash
+CX=/Applications/CrossOver.app/Contents/SharedSupport/CrossOver
+
+# Create 64-bit bottle
+"$CX/bin/cxbottle" --bottle BeamNG --create --template win10_64
+
+# Link your BeamNG install (adjust path to your Whisky bottle's BeamNG.drive)
+BNG_SRC="$HOME/Library/Containers/com.isaacmarovitz.Whisky/Bottles/<UUID>/drive_c/steamcmd/steamapps/common/BeamNG.drive"
+mkdir -p ~/Library/Application\ Support/CrossOver/Bottles/BeamNG/drive_c/steamcmd/steamapps/common
+ln -s "$BNG_SRC" ~/Library/Application\ Support/CrossOver/Bottles/BeamNG/drive_c/steamcmd/steamapps/common/BeamNG.drive
+
+# Install VC runtime via winetricks
+curl -fL -o /tmp/winetricks \
+  https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks
+chmod +x /tmp/winetricks
+env WINEPREFIX=~/Library/Application\ Support/CrossOver/Bottles/BeamNG \
+    WINE="$CX/bin/wine" \
+    WINESERVER="$CX/bin/wineserver" \
+    PATH="$CX/bin:/opt/homebrew/bin:$PATH" \
+    /tmp/winetricks -q vcrun2019 d3dcompiler_47
+
+# Launch
+"$CX/bin/cxstart" --bottle BeamNG \
+  'C:\steamcmd\steamapps\common\BeamNG.drive\Bin64\BeamNG.drive.x64.exe' \
+  -- -nosteam -noeos
+```
+
+**What CrossOver 26 achieves vs every FOSS Wine path tested:**
+- CefManager::init completes (game-time 21s, not a timeout)
+- Shader compile runs (game-time 33s, past where Sikarugir stalled)
+- fmod audio banks load completely (game-time 23s)
+- D3D11 device reset succeeds at 1280x720
+- No `winedbg --auto` crashes at all
+
+CrossOver bundles CodeWeavers' patched Wine **plus** Apple's D3DMetal 3.0
+with the matching `__wine_unix_call` internals. That integration is what
+makes BeamNG's CEF work — and why Sikarugir's generic Wine 10 fails even
+when it has the same D3DMetal.framework on disk.
+
+**Limitation observed in this session**: game still stalls around
+game-time 33s with a black window on this specific macOS 26 / M1 Max
+config. Additional CrossOver-side tweaks (winecfg, registry overrides,
+further winetricks components) are needed — MacGamingDB community reports
+show BeamNG fully playable on CrossOver 26 with specific per-user config,
+so this is a config gap rather than a code gap.
+
