@@ -3,13 +3,13 @@
   # Whisky 🥃 
   *Wine but a bit stronger*
   
-  ![](https://img.shields.io/github/actions/workflow/status/IsaacMarovitz/Whisky/SwiftLint.yml?style=for-the-badge)
+  ![](https://img.shields.io/github/actions/workflow/status/EricSpencer00/Whisky/Build.yml?branch=main&style=for-the-badge&label=build)
   [![](https://img.shields.io/discord/1115955071549702235?style=for-the-badge)](https://discord.gg/CsqAfs9CnM)
 </div>
 
 ## Maintenance Notice
 
-[Whisky is no longer actively maintained](https://docs.getwhisky.app/maintenance-notice). Apps and games may break at any time.
+Upstream [Whisky-App/Whisky](https://github.com/Whisky-App/Whisky) was [archived on 2025-05-11](https://docs.getwhisky.app/maintenance-notice). **This is a community-maintenance fork** (`EricSpencer00/Whisky`) that keeps the app compiling on current macOS/Xcode and tracks new [Gcenx GPTK](https://github.com/Gcenx/game-porting-toolkit) releases. See [MAINTAINING.md](MAINTAINING.md) for scope and build instructions. Apps and games may still break; no parity promise with CrossOver.
 
 <img width="650" alt="Config" src="https://github.com/Whisky-App/Whisky/assets/42140194/d0a405e8-76ee-48f0-92b5-165d184a576b">
 
@@ -35,12 +35,12 @@ Translated on [Crowdin](https://crowdin.com/project/whisky).
 
 ## System Requirements
 - CPU: Apple Silicon (M-series chips)
-- OS: macOS Sonoma 14.0 or later
+- OS: macOS Sonoma 14.0 or later (this fork verified on macOS 26 / Xcode 26 / Swift 6.2)
 
-## Homebrew
+## Install
 
-Whisky is on homebrew! Install with 
-`brew install --cask whisky`.
+- **Install the last official release via Homebrew**: `brew install --cask whisky` (still works, unchanged from the archived upstream).
+- **Build this fork from source**: see [MAINTAINING.md](MAINTAINING.md). The community fork tree on this repo carries a fix so `xcodebuild` succeeds on Xcode 26 without disabling SwiftLint. Unsigned builds only; run `xattr -dr com.apple.quarantine` on the resulting `Whisky.app` or sign with your own Developer ID.
 
 ## My game isn't working!
 

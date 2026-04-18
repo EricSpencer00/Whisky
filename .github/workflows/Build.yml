@@ -1,0 +1,45 @@
+name: Build
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+    branches: [main, "swiftlint-build-fix", "community-maintenance"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project Whisky.xcodeproj
+
+      - name: Build Whisky (Debug, unsigned)
+        run: |
+          xcodebuild \
+            -scheme Whisky \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath ./build \
+            build | xcbeautify
+
+      - name: Upload Whisky.app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Whisky-Debug-unsigned
+          path: build/Build/Products/Debug/Whisky.app
+          if-no-files-found: error
