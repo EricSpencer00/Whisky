@@ -98,6 +98,16 @@ install_llvm_mingw() {
     mkdir -p "$dest"
     tar -xJf "$WORK_DIR/$LLVM_MINGW_TARBALL" -C "$dest" --strip-components=1
   fi
+  # winebuild calls bare 'dlltool' / 'lld-link' / 'ld' / 'windres' — put
+  # triplet-free symlinks alongside the triplet-prefixed binaries.
+  (
+    cd "$dest/bin"
+    for tool in dlltool windres ar nm objcopy ranlib strip lld-link; do
+      [ -e "$tool" ] || [ ! -e "llvm-$tool" ] || ln -s "llvm-$tool" "$tool"
+    done
+    # lld is available as ld.lld; winebuild may invoke bare 'ld'
+    [ ! -e ld ] && [ -e ld.lld ] && ln -s ld.lld ld
+  )
   export PATH="$dest/bin:$PATH"
   log "llvm-mingw in PATH: $(which aarch64-w64-mingw32-clang)"
 }
