@@ -153,7 +153,8 @@ build_wine() {
       --disable-tests \
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \
-      --with-freetype --with-gnutls --with-gstreamer --with-mingw --with-opengl \
+      --without-opengl \
+      --with-freetype --with-gnutls --with-gstreamer --with-mingw \
       --with-vulkan --with-coreaudio
   )
 
