@@ -1,0 +1,73 @@
+name: BuildWine
+
+# Compiles Wine from CodeWeavers' LGPL-published CrossOver source and publishes
+# it as a release asset on this fork — so the community fork is no longer
+# dependent on the archived upstream's CDN (data.getwhisky.app).
+#
+# This runs manually (workflow_dispatch) or when a tag matching wine-vX.Y.Z is
+# pushed. It does NOT run on every commit — Wine compilation takes 1-3 hours.
+
+concurrency:
+  group: buildwine-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      crossover_version:
+        description: "CrossOver source version (from media.codeweavers.com)"
+        required: true
+        default: "26.1.0"
+      release_tag:
+        description: "Release tag to upload to (e.g. wine-v26.1.0)"
+        required: true
+        default: "wine-v26.1.0"
+  push:
+    tags:
+      - "wine-v*"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install build deps
+        run: |
+          brew update --auto-update || true
+          brew install bison flex mingw-w64 gst-plugins-base freetype gnutls molten-vk pkgconf sdl2 || true
+
+      - name: Build Wine from CrossOver source
+        env:
+          CROSSOVER_VERSION: ${{ github.event.inputs.crossover_version || '26.1.0' }}
+        run: |
+          ./Scripts/build-wine.sh
+
+      - name: Compute checksum
+        run: |
+          shasum -a 256 out/Libraries.tar.gz | tee out/Libraries.tar.gz.sha256
+
+      - name: Upload tarball as run artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: Libraries-${{ github.event.inputs.crossover_version || '26.1.0' }}
+          path: |
+            out/Libraries.tar.gz
+            out/Libraries.tar.gz.sha256
+          if-no-files-found: error
+
+      - name: Publish release (on wine-v* tag)
+        if: startsWith(github.ref, 'refs/tags/wine-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/Libraries.tar.gz
+            out/Libraries.tar.gz.sha256
+          body: |
+            Wine built from CodeWeavers' LGPL-published CrossOver source.
+            Source: https://media.codeweavers.com/pub/crossover/source/
+            Build script: Scripts/build-wine.sh in this repo.
+            License: LGPL v2.1+ (Wine) — source included upstream.
+
+            Drop-in replacement for `https://data.getwhisky.app/Wine/Libraries.tar.gz`.

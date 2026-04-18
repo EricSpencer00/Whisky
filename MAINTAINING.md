@@ -50,15 +50,36 @@ Developer ID or run via `xattr -dr com.apple.quarantine Whisky.app`).
 ## Runtime Wine / GPTK
 
 Whisky downloads its bundled Wine from `https://data.getwhisky.app/Wine/Libraries.tar.gz`
-on first run (see `WhiskyKit/Sources/WhiskyKit/WhiskyWine/WhiskyWineInstaller.swift`).
-The version currently served (`WhiskyWineVersion.plist` → `2.5.0`) bundles Wine
-7.7 + D3DMetal 2.0 (GPTK 1.x). For users who need D3DMetal 3.0 (helpful for
-newer titles using complex shader pipelines), the hand-swap recipe is
+on first run. The default-served version (`WhiskyWineVersion.plist` → `2.5.0`)
+bundles Wine 7.7 + D3DMetal 2.0 (GPTK 1.x). For newer titles that want the
+D3DMetal 3.0 runtime, the hand-swap recipe is at
 [docs/gptk-3-swap-experiment.md](docs/gptk-3-swap-experiment.md).
 
-Open maintenance task: self-host a `Libraries.tar.gz` on this fork's release
-assets and swap the download URL in `WhiskyWineInstaller.swift`, so the fork is
-not dependent on the archived upstream's CDN.
+### Open-source-from-source story (CrossOver LGPL)
+
+CodeWeavers publishes the Wine tree that underlies CrossOver as LGPL source —
+see [their source page](https://www.codeweavers.com/crossover/source). This
+fork uses that directly:
+
+- [`Scripts/build-wine.sh`](Scripts/build-wine.sh) fetches
+  `crossover-sources-<ver>.tar.gz` from `media.codeweavers.com`, builds Wine
+  with the Homebrew cross-compile toolchain, and packages the result in the
+  same `Libraries/` layout that `WhiskyWineInstaller` expects. Output lands in
+  `out/Libraries.tar.gz`.
+- [`.github/workflows/BuildWine.yml`](.github/workflows/BuildWine.yml) runs
+  that script on a `macos-15` runner, triggered manually
+  (`gh workflow run BuildWine.yml`) or by pushing a `wine-vX.Y.Z` tag, and
+  publishes the tarball + SHA-256 as a release asset on this fork.
+- `WhiskyWineInstaller.swift` reads `WHISKY_WINE_BASE_URL` from the process
+  environment. Set that to the fork's release URL (e.g.
+  `https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.1.0`)
+  to pull the FOSS-built tarball instead of the upstream CDN.
+
+**Not bundled, and intentionally so**: Apple's Game Porting Toolkit
+(`D3DMetal.framework`). Apple's GPTK license does not permit third-party
+redistribution. Users who want D3DMetal drop it into
+`$LIBRARIES/Wine/lib/external/` themselves. The build script documents the
+exact path.
 
 ## CI
 

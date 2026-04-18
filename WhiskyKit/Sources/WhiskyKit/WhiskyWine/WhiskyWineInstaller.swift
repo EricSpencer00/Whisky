@@ -60,8 +60,21 @@ public class WhiskyWineInstaller {
         }
     }
 
+    /// Base URL where the WhiskyWine tarball and version plist are hosted.
+    /// Override at runtime by setting `WHISKY_WINE_BASE_URL` in the launch
+    /// environment — useful for testing against a mirror or a fork's release
+    /// assets (e.g. this fork's FOSS-built tarball at
+    /// `https://github.com/EricSpencer00/Whisky/releases/.../Libraries.tar.gz`).
+    public static var wineBaseURL: String {
+        if let override = ProcessInfo.processInfo.environment["WHISKY_WINE_BASE_URL"],
+           !override.isEmpty {
+            return override
+        }
+        return "https://data.getwhisky.app/Wine"
+    }
+
     public static func shouldUpdateWhiskyWine() async -> (Bool, SemanticVersion) {
-        let versionPlistURL = "https://data.getwhisky.app/Wine/WhiskyWineVersion.plist"
+        let versionPlistURL = "\(wineBaseURL)/WhiskyWineVersion.plist"
         let localVersion = whiskyWineVersion()
 
         var remoteVersion: SemanticVersion?
