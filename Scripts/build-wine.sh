@@ -178,12 +178,12 @@ build_wine() {
   export CFLAGS="-O2 -g -I$BREW_PREFIX/include"
   export LDFLAGS="-L$BREW_PREFIX/lib -L$BREW_PREFIX/opt/vulkan-loader/lib -L$BREW_PREFIX/opt/molten-vk/lib"
 
-  log "Configuring wine ($(nproc 2>/dev/null || sysctl -n hw.ncpu) cores, archs=arm64,x86_64)"
+  log "Configuring wine ($(nproc 2>/dev/null || sysctl -n hw.ncpu) cores, archs=aarch64,x86_64)"
   (
     cd "$build64"
     "$src/configure" \
       --prefix="$prefix" \
-      --enable-archs=arm64,x86_64 \
+      --enable-archs=aarch64,x86_64 \
       --disable-tests \
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \
@@ -192,11 +192,16 @@ build_wine() {
       --with-vulkan --with-coreaudio
   )
 
-  log "Building wine64 with $JOBS jobs"
+  log "Building wine with $JOBS jobs"
   make -C "$build64" -j"$JOBS"
 
   log "Installing to $prefix"
   make -C "$build64" install
+
+  # Whisky expects a `wine64` binary; Wine 11 unified to `wine`
+  if [ -x "$prefix/bin/wine" ] && [ ! -e "$prefix/bin/wine64" ]; then
+    ln -sf wine "$prefix/bin/wine64"
+  fi
 
   # Strip to save space
   if command -v strip >/dev/null; then
@@ -233,6 +238,15 @@ PLIST
 
   # DXVK and verbs.txt left as placeholder — community maintainers can populate
   mkdir -p "$stage/Libraries/DXVK"
+
+  # Ad-hoc codesign so the unsigned wine binaries don't get SIGKILL'd by
+  # macOS hardened runtime at launch. Users who have a Developer ID should
+  # re-sign with their own identity after download; ad-hoc is enough for
+  # the local-dev use case.
+  log "Ad-hoc codesigning Unix-side binaries + libs"
+  find "$stage/Libraries/Wine/bin" -type f -perm +111 -exec codesign --force --sign - {} + 2>/dev/null || true
+  find "$stage/Libraries/Wine/lib/wine/aarch64-unix" -name '*.so' -exec codesign --force --sign - {} + 2>/dev/null || true
+  find "$stage/Libraries/Wine/lib" -maxdepth 2 -name '*.dylib' -exec codesign --force --sign - {} + 2>/dev/null || true
 
   log "Creating Libraries.tar.gz"
   mkdir -p "$OUT_DIR"
