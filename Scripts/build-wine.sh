@@ -136,15 +136,13 @@ fetch_source() {
 # "use of undeclared identifier 'WineMetalLayer'". Drop the guard — the class
 # is a trivial CAMetalLayer subclass and builds fine on aarch64.
 patch_source() {
-  local hdr="$WORK_DIR/src/wine/dlls/winemac.drv/d3dmetal_objc.h"
-  local src="$WORK_DIR/src/wine/dlls/winemac.drv/d3dmetal_objc.m"
-  for f in "$hdr" "$src"; do
+  local d="$WORK_DIR/src/wine/dlls/winemac.drv"
+  for f in "$d/d3dmetal_objc.h" "$d/d3dmetal_objc.m" "$d/d3dmetal.c"; do
     [ -f "$f" ] || continue
     # Replace '#if defined(__x86_64__)' → '#if 1' and corresponding '#endif'
     # is harmless left in place.
     if grep -q 'defined(__x86_64__)' "$f"; then
       log "Patching $(basename $f) to also compile on aarch64"
-      # Use a sed that works on both BSD and GNU
       /usr/bin/sed -i.orig 's|#if defined(__x86_64__)|#if 1 /* was: defined(__x86_64__) — patched for aarch64 */|g' "$f"
     fi
   done
