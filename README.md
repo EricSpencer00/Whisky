@@ -11,6 +11,10 @@
 
 Upstream [Whisky-App/Whisky](https://github.com/Whisky-App/Whisky) was [archived on 2025-05-11](https://docs.getwhisky.app/maintenance-notice). **This is a community-maintenance fork** (`EricSpencer00/Whisky`) that keeps the app compiling on current macOS/Xcode and tracks new [Gcenx GPTK](https://github.com/Gcenx/game-porting-toolkit) releases. See [MAINTAINING.md](MAINTAINING.md) for scope and build instructions. Apps and games may still break; no parity promise with CrossOver.
 
+### FOSS-from-source
+
+This fork builds its own Wine directly from [CodeWeavers' LGPL-published CrossOver source tree](https://www.codeweavers.com/crossover/source) via [`Scripts/build-wine.sh`](Scripts/build-wine.sh) and the [`BuildWine`](.github/workflows/BuildWine.yml) GitHub Actions workflow. Released tarballs appear under this repo's Releases (tagged `wine-vX.Y.Z`). Set the `WHISKY_WINE_BASE_URL` environment variable to point Whisky's first-run installer at the fork's release assets instead of the archived upstream CDN. Apple's GPTK / D3DMetal are not bundled (Apple's license does not permit third-party redistribution); users drop the framework into `Libraries/Wine/lib/external/` themselves.
+
 <img width="650" alt="Config" src="https://github.com/Whisky-App/Whisky/assets/42140194/d0a405e8-76ee-48f0-92b5-165d184a576b">
 
 Familiar UI that integrates seamlessly with macOS
