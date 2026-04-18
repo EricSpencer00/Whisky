@@ -59,6 +59,8 @@ BREW_DEPS=(
   molten-vk
   pkgconf
   sdl2
+  vulkan-headers
+  vulkan-loader
 )
 
 # llvm-mingw (for aarch64 PE cross-compilation) is not in Homebrew core. We
@@ -140,9 +142,11 @@ build_wine() {
 
   # Use brew paths for ICU/GStreamer etc.
   export PATH="$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$PATH"
-  export PKG_CONFIG_PATH="$(brew --prefix)/opt/gstreamer/lib/pkgconfig:$(brew --prefix)/opt/gst-plugins-base/lib/pkgconfig:$(brew --prefix)/opt/freetype/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-  export CFLAGS="-O2 -g"
-  export LDFLAGS=""
+  local BREW_PREFIX
+  BREW_PREFIX="$(brew --prefix)"
+  export PKG_CONFIG_PATH="$BREW_PREFIX/opt/gstreamer/lib/pkgconfig:$BREW_PREFIX/opt/gst-plugins-base/lib/pkgconfig:$BREW_PREFIX/opt/freetype/lib/pkgconfig:$BREW_PREFIX/opt/vulkan-loader/lib/pkgconfig:$BREW_PREFIX/opt/molten-vk/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  export CFLAGS="-O2 -g -I$BREW_PREFIX/include"
+  export LDFLAGS="-L$BREW_PREFIX/lib -L$BREW_PREFIX/opt/vulkan-loader/lib -L$BREW_PREFIX/opt/molten-vk/lib"
 
   log "Configuring wine64 ($(nproc 2>/dev/null || sysctl -n hw.ncpu) cores)"
   (
