@@ -65,9 +65,15 @@ jobs:
             out/Libraries.tar.gz
             out/Libraries.tar.gz.sha256
           body: |
-            Wine built from CodeWeavers' LGPL-published CrossOver source.
-            Source: https://media.codeweavers.com/pub/crossover/source/
-            Build script: Scripts/build-wine.sh in this repo.
-            License: LGPL v2.1+ (Wine) — source included upstream.
+            Full-FOSS Wine + DXVK + MoltenVK bundle. Contents:
 
-            Drop-in replacement for `https://data.getwhisky.app/Wine/Libraries.tar.gz`.
+            - **Wine 11.0** built from CodeWeavers' LGPL-published CrossOver ${{ github.event.inputs.crossover_version || '26.1.0' }} source, patched with **Hack 18311** (wined3d-vulkan default on macOS).
+            - **MoltenVK 1.4.1** universal (x86_64 + arm64), advertising Vulkan 1.4 — enough for DXVK 2.7.1's 1.3 requirement.
+            - **DXVK 2.7.1** full DLL set (d3d8, d3d9, d3d10core, d3d11, dxgi — x64 + x32).
+
+            Sources:
+            - Wine / Hack 18311 — https://media.codeweavers.com/pub/crossover/source/ (LGPL-2.1+)
+            - MoltenVK — https://github.com/KhronosGroup/MoltenVK (Apache-2.0)
+            - DXVK — https://github.com/doitsujin/dxvk (zlib)
+
+            Drop-in replacement for `https://data.getwhisky.app/Wine/Libraries.tar.gz`. Point Whisky at this release via `WHISKY_WINE_BASE_URL=https://github.com/EricSpencer00/Whisky/releases/download/${{ github.ref_name }}`.
