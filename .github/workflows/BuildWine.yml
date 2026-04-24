@@ -26,6 +26,9 @@ on:
     tags:
       - "wine-v*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
