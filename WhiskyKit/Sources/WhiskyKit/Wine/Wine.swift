@@ -21,10 +21,10 @@ import os.log
 
 public class Wine {
     /// URL to the installed `DXVK` folder
-    private static let dxvkFolder: URL = WhiskyWineInstaller.libraryFolder.appending(path: "DXVK")
+    private static let dxvkFolder: URL = WhiskyWineInstaller.dxvkFolder
     /// Path to the `wine64` binary
     public static let wineBinary: URL = WhiskyWineInstaller.binFolder.appending(path: "wine64")
-    /// Parth to the `wineserver` binary
+    /// Path to the `wineserver` binary
     private static let wineserverBinary: URL = WhiskyWineInstaller.binFolder.appending(path: "wineserver")
 
     /// Run a process on a executable file given by the `executableURL`
@@ -225,6 +225,20 @@ public class Wine {
         )
     }
 
+    /// Compute the Vulkan/MoltenVK environment variables injected at bottle launch.
+    /// Points the Vulkan loader at our bundled MoltenVK ICD and puts the dylib on dyld's fallback path.
+    private static func vulkanEnvironment() -> [String: String] {
+        let moltenvkDir = WhiskyWineInstaller.moltenvkFolder.path
+        let existingDyld = ProcessInfo.processInfo.environment["DYLD_FALLBACK_LIBRARY_PATH"] ?? ""
+        let dyldPath = existingDyld.isEmpty
+            ? "\(moltenvkDir):/usr/local/lib:/usr/lib"
+            : "\(moltenvkDir):\(existingDyld)"
+        return [
+            "VK_ICD_FILENAMES": WhiskyWineInstaller.moltenvkIcdPath.path,
+            "DYLD_FALLBACK_LIBRARY_PATH": dyldPath
+        ]
+    }
+
     /// Construct an environment merging the bottle values with the given values
     private static func constructWineEnvironment(
         for bottle: Bottle, environment: [String: String] = [:]
@@ -234,6 +248,7 @@ public class Wine {
             "WINEDEBUG": "fixme-all",
             "GST_DEBUG": "1"
         ]
+        result.merge(vulkanEnvironment(), uniquingKeysWith: { $1 })
         bottle.settings.environmentVariables(wineEnv: &result)
         guard !environment.isEmpty else { return result }
         result.merge(environment, uniquingKeysWith: { $1 })
@@ -249,6 +264,7 @@ public class Wine {
             "WINEDEBUG": "fixme-all",
             "GST_DEBUG": "1"
         ]
+        result.merge(vulkanEnvironment(), uniquingKeysWith: { $1 })
         guard !environment.isEmpty else { return result }
         result.merge(environment, uniquingKeysWith: { $1 })
         return result

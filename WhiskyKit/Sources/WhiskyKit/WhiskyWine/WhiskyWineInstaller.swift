@@ -25,11 +25,21 @@ public class WhiskyWineInstaller {
         for: .applicationSupportDirectory, in: .userDomainMask
         )[0].appending(path: Bundle.whiskyBundleIdentifier)
 
-    /// The folder of all the libfrary files
+    /// The folder of all the library files
     public static let libraryFolder = applicationFolder.appending(path: "Libraries")
 
     /// URL to the installed `wine` `bin` directory
     public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
+
+    /// Folder containing the bundled universal `libMoltenVK.dylib` and `icd.d/MoltenVK_icd.json`.
+    public static let moltenvkFolder: URL = libraryFolder.appending(path: "MoltenVK")
+
+    /// Absolute path to the bundled MoltenVK ICD manifest — used as `VK_ICD_FILENAMES` at bottle launch.
+    public static let moltenvkIcdPath: URL = moltenvkFolder
+        .appending(path: "icd.d").appending(path: "MoltenVK_icd.json")
+
+    /// Folder containing the DXVK DLL set: `x64/{d3d8,d3d9,d3d10core,d3d11,dxgi}.dll` and `x32/…`.
+    public static let dxvkFolder: URL = libraryFolder.appending(path: "DXVK")
 
     public static func isWhiskyWineInstalled() -> Bool {
         return whiskyWineVersion() != nil
