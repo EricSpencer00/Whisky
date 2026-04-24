@@ -146,6 +146,24 @@ patch_source() {
       /usr/bin/sed -i.orig 's|#if defined(__x86_64__)|#if 1 /* was: defined(__x86_64__) — patched for aarch64 */|g' "$f"
     fi
   done
+
+  # Hack 18311: prefer wined3d-vulkan on macOS so DXVK-style rendering is default.
+  # Source: CrossOver 26.1.0 LGPL drop, dlls/wined3d/directx.c. LGPL-2.1+.
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local hack18311="$script_dir/patches/hack-18311-wined3d-vulkan-default.patch"
+  local wine_src="$WORK_DIR/src/wine"
+  [ -d "$wine_src" ] || wine_src="$WORK_DIR/src/sources/wine"
+  if [ -f "$hack18311" ] && [ -f "$wine_src/dlls/wined3d/directx.c" ]; then
+    log "Applying Hack 18311 (wined3d-vulkan default on macOS)"
+    if ( cd "$wine_src" && patch -p1 --forward --silent < "$hack18311" ); then
+      :
+    else
+      log "WARN: Hack 18311 patch returned non-zero — may already be applied"
+    fi
+  else
+    log "WARN: Hack 18311 patch or wined3d directx.c not found — skipping"
+  fi
 }
 
 # ---- configure + build wine ----
