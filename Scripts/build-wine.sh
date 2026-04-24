@@ -254,8 +254,21 @@ package() {
 </plist>
 PLIST
 
-  # DXVK and verbs.txt left as placeholder — community maintainers can populate
+  # Fetch + bundle MoltenVK 1.4.1 universal so Wine's Vulkan loader can resolve
+  # libMoltenVK.dylib at runtime without relying on a Homebrew install.
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  log "Fetching MoltenVK"
+  OUT_DIR="$OUT_DIR" WORK_DIR="$WORK_DIR" bash "$script_dir/fetch-moltenvk.sh"
+  mkdir -p "$stage/Libraries/MoltenVK/icd.d"
+  cp "$OUT_DIR/MoltenVK/libMoltenVK.dylib" "$stage/Libraries/MoltenVK/libMoltenVK.dylib"
+  cp "$OUT_DIR/MoltenVK/icd.d/MoltenVK_icd.json" "$stage/Libraries/MoltenVK/icd.d/MoltenVK_icd.json"
+
+  # Fetch + bundle DXVK 2.7.1 full DLL set (incl. dxgi.dll, missing from older Whisky).
+  log "Fetching DXVK"
+  OUT_DIR="$OUT_DIR" WORK_DIR="$WORK_DIR" bash "$script_dir/fetch-dxvk.sh"
   mkdir -p "$stage/Libraries/DXVK"
+  cp -R "$OUT_DIR/DXVK"/* "$stage/Libraries/DXVK/"
 
   # Ad-hoc codesign so the unsigned wine binaries don't get SIGKILL'd by
   # macOS hardened runtime at launch. Users who have a Developer ID should
