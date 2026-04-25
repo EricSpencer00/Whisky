@@ -217,7 +217,15 @@ build_wine() {
     BREW_PREFIX="$(brew --prefix)"
     log "WARN: no x86_64 brew at /usr/local; falling back to $BREW_PREFIX (must contain x86_64 dylibs)"
   fi
-  export PKG_CONFIG_PATH="$BREW_PREFIX/opt/gstreamer/lib/pkgconfig:$BREW_PREFIX/opt/gst-plugins-base/lib/pkgconfig:$BREW_PREFIX/opt/freetype/lib/pkgconfig:$BREW_PREFIX/opt/gnutls/lib/pkgconfig:$BREW_PREFIX/opt/vulkan-loader/lib/pkgconfig:$BREW_PREFIX/opt/molten-vk/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  # PKG_CONFIG_LIBDIR REPLACES the compiled-in default search path. Without
+  # this, pkg-config (running from ARM brew on macos-15) falls back to
+  # /opt/homebrew when resolving transitive deps like glib-2.0.pc — and the
+  # linker then pulls ARM dylibs into the x86_64 build (winegstreamer fails
+  # with "ld: warning: ignoring file libglib-2.0.dylib: arch arm64").
+  # Pinning LIBDIR forces all .pc lookups (direct AND transitive) to the
+  # x86_64 brew prefix only.
+  export PKG_CONFIG_LIBDIR="$BREW_PREFIX/lib/pkgconfig:$BREW_PREFIX/share/pkgconfig"
+  export PKG_CONFIG_PATH="$BREW_PREFIX/opt/gstreamer/lib/pkgconfig:$BREW_PREFIX/opt/gst-plugins-base/lib/pkgconfig:$BREW_PREFIX/opt/freetype/lib/pkgconfig:$BREW_PREFIX/opt/gnutls/lib/pkgconfig:$BREW_PREFIX/opt/vulkan-loader/lib/pkgconfig:$BREW_PREFIX/opt/molten-vk/lib/pkgconfig"
   export CFLAGS="-O2 -g -I$BREW_PREFIX/include"
   export LDFLAGS="-L$BREW_PREFIX/lib -L$BREW_PREFIX/opt/vulkan-loader/lib -L$BREW_PREFIX/opt/molten-vk/lib"
 
