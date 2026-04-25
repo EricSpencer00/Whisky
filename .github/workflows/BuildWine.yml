@@ -51,14 +51,21 @@ jobs:
             arch -x86_64 /bin/bash -c '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' < /dev/null
           fi
           arch -x86_64 /usr/local/bin/brew update --auto-update || true
+          # Note: brew renamed/bundled gst-plugins-base into the gstreamer
+          # formula (all gst-* plugins now ship under one keg). And libffi is
+          # NOT auto-installed by brew (glib uses macOS system libffi at link
+          # time), but pkg-config refuses to emit cflags when libffi.pc is
+          # absent — install it explicitly so gstreamer's pkg-config check
+          # passes during Wine's configure.
           arch -x86_64 /usr/local/bin/brew install \
-            gst-plugins-base freetype gnutls molten-vk \
+            gstreamer freetype gnutls molten-vk \
             sdl2 vulkan-headers vulkan-loader \
-            zlib bzip2 libpng || true
+            zlib bzip2 libpng libffi || true
 
           # Sanity: confirm x86_64 dylibs are available
           file /usr/local/opt/freetype/lib/libfreetype.dylib || true
           file /usr/local/opt/gnutls/lib/libgnutls.dylib || true
+          file /usr/local/opt/gstreamer/lib/libgstreamer-1.0.dylib || true
 
       - name: Build Wine from CrossOver source
         env:
