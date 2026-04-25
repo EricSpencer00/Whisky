@@ -35,7 +35,7 @@ time (or before deleting `~/Library/Application Support/com.isaacmarovitz.Whisky
 to force re-bootstrap):
 
 ```sh
-export WHISKY_WINE_BASE_URL="https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.1.0-foss-phase1"
+export WHISKY_WINE_BASE_URL="https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.1.0-foss-phase1k"
 open -a Whisky
 ```
 
