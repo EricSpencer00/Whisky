@@ -188,11 +188,22 @@ build_wine() {
   rm -rf "$build64" "$prefix"
   mkdir -p "$build64" "$prefix"
 
-  # Use brew paths for ICU/GStreamer etc.
+  # bison/flex are arch-independent — use ARM brew (default on macos-15).
   export PATH="$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$PATH"
+
+  # Library deps must be x86_64 because we configure/build under Rosetta.
+  # Prefer x86_64 brew at /usr/local if present (CI installs it there).
+  # Local devs without /usr/local brew fall back to default brew prefix —
+  # they need to make sure it has x86_64 deps (e.g. via `arch -x86_64 brew install`).
   local BREW_PREFIX
-  BREW_PREFIX="$(brew --prefix)"
-  export PKG_CONFIG_PATH="$BREW_PREFIX/opt/gstreamer/lib/pkgconfig:$BREW_PREFIX/opt/gst-plugins-base/lib/pkgconfig:$BREW_PREFIX/opt/freetype/lib/pkgconfig:$BREW_PREFIX/opt/vulkan-loader/lib/pkgconfig:$BREW_PREFIX/opt/molten-vk/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+  if [ -x /usr/local/bin/brew ]; then
+    BREW_PREFIX="/usr/local"
+    log "Using x86_64 brew prefix: $BREW_PREFIX"
+  else
+    BREW_PREFIX="$(brew --prefix)"
+    log "WARN: no x86_64 brew at /usr/local; falling back to $BREW_PREFIX (must contain x86_64 dylibs)"
+  fi
+  export PKG_CONFIG_PATH="$BREW_PREFIX/opt/gstreamer/lib/pkgconfig:$BREW_PREFIX/opt/gst-plugins-base/lib/pkgconfig:$BREW_PREFIX/opt/freetype/lib/pkgconfig:$BREW_PREFIX/opt/gnutls/lib/pkgconfig:$BREW_PREFIX/opt/vulkan-loader/lib/pkgconfig:$BREW_PREFIX/opt/molten-vk/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
   export CFLAGS="-O2 -g -I$BREW_PREFIX/include"
   export LDFLAGS="-L$BREW_PREFIX/lib -L$BREW_PREFIX/opt/vulkan-loader/lib -L$BREW_PREFIX/opt/molten-vk/lib"
 
@@ -214,8 +225,7 @@ build_wine() {
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \
       --without-opengl \
-      --without-gnutls \
-      --with-freetype --with-gstreamer --with-mingw \
+      --with-freetype --with-gnutls --with-gstreamer --with-mingw \
       --with-vulkan --with-coreaudio
   )
 
