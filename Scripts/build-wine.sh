@@ -214,7 +214,8 @@ build_wine() {
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \
       --without-opengl \
-      --with-freetype --with-gnutls --with-gstreamer --with-mingw \
+      --without-gnutls \
+      --with-freetype --with-gstreamer --with-mingw \
       --with-vulkan --with-coreaudio
   )
 
