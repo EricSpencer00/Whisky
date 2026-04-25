@@ -225,7 +225,18 @@ build_wine() {
   # Pinning LIBDIR forces all .pc lookups (direct AND transitive) to the
   # x86_64 brew prefix only.
   export PKG_CONFIG_LIBDIR="$BREW_PREFIX/lib/pkgconfig:$BREW_PREFIX/share/pkgconfig"
-  export PKG_CONFIG_PATH="$BREW_PREFIX/opt/gstreamer/lib/pkgconfig:$BREW_PREFIX/opt/gst-plugins-base/lib/pkgconfig:$BREW_PREFIX/opt/freetype/lib/pkgconfig:$BREW_PREFIX/opt/gnutls/lib/pkgconfig:$BREW_PREFIX/opt/vulkan-loader/lib/pkgconfig:$BREW_PREFIX/opt/molten-vk/lib/pkgconfig"
+  # On CI, brew link sometimes fails partway through (e.g. python@3.14 conflict)
+  # so /usr/local/lib/pkgconfig/<foo>.pc may be missing even though the formula
+  # is fully installed in its keg. Enumerate every $BREW_PREFIX/opt/*/lib/pkgconfig
+  # so transitive deps (glib, libpng, gettext, gst-plugins-base, ...) are found
+  # regardless of whether brew finished symlinking into $BREW_PREFIX/lib.
+  local _opt_pcdirs
+  _opt_pcdirs=$(/bin/ls -d "$BREW_PREFIX"/opt/*/lib/pkgconfig 2>/dev/null | tr '\n' ':')
+  export PKG_CONFIG_PATH="${_opt_pcdirs}"
+  log "PKG_CONFIG_LIBDIR: $PKG_CONFIG_LIBDIR"
+  log "PKG_CONFIG_PATH (first 5): $(echo "$PKG_CONFIG_PATH" | tr ':' '\n' | head -5 | tr '\n' ' ')"
+  log "Sanity: freetype2.pc at $(arch -x86_64 pkg-config --variable=pcfiledir freetype2 2>/dev/null || echo MISSING)"
+  log "Sanity: glib-2.0.pc at $(arch -x86_64 pkg-config --variable=pcfiledir glib-2.0 2>/dev/null || echo MISSING)"
   export CFLAGS="-O2 -g -I$BREW_PREFIX/include"
   export LDFLAGS="-L$BREW_PREFIX/lib -L$BREW_PREFIX/opt/vulkan-loader/lib -L$BREW_PREFIX/opt/molten-vk/lib"
 
