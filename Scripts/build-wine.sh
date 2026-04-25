@@ -274,12 +274,18 @@ build_wine() {
   # x86_64-unix backend was silently failing and the strip step was destroying
   # what little remained. Run the entire build under `arch -x86_64` so configure
   # auto-detects host=x86_64-apple-darwin.
-  log "Configuring wine x86_64 (host build under Rosetta, $(sysctl -n hw.ncpu) cores)"
+  # --enable-archs=i386,x86_64 enables Wine's New WoW64 (single x86_64 process,
+  # i386 PE world translated in-process). Without this, the bundle has only
+  # x86_64-windows/ and any 32-bit installer/redist/anti-cheat/winebus driver
+  # fails. Phase1k shipped without WoW64 — wineboot --init never completed on
+  # first launch and DirectInput hung mid-enumeration. Rosetta runs the whole
+  # x86_64 process, so the i386 PE side runs in-process via wow64cpu.dll.
+  log "Configuring wine i386+x86_64 WoW64 (host build under Rosetta, $(sysctl -n hw.ncpu) cores)"
   if ! (
     cd "$build64"
     arch -x86_64 "$src/configure" \
       --prefix="$prefix" \
-      --enable-win64 \
+      --enable-archs=i386,x86_64 \
       --disable-tests \
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \
@@ -324,11 +330,15 @@ build_wine() {
     log "ERROR: $prefix/lib/wine/x86_64-unix backend missing — broken build"
     exit 1
   fi
+  if [ ! -d "$prefix/lib/wine/i386-windows" ]; then
+    log "ERROR: $prefix/lib/wine/i386-windows missing — WoW64 build failed"
+    exit 1
+  fi
   # Wine 11 doesn't ship wine-preloader on macOS x86_64 builds (configure
   # sets WINEPRELOADER_LDFLAGS='' — the loader handles address space
   # in-process). Confirmed against the working phase1 release which also
   # has no preloader binary. Don't gate on it.
-  log "Wine bundle sanity check OK: wine64=${wine64_size}B, x86_64-unix backend present"
+  log "Wine bundle sanity check OK: wine64=${wine64_size}B, x86_64-unix + i386-windows present"
 
   # NOTE: Do NOT strip the binaries. Wine binaries on macOS rely on symbol
   # information for runtime resolution; strip -x corrupted prior bundles.
