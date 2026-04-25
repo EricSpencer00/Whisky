@@ -243,8 +243,21 @@ build_wine() {
   find "$BREW_PREFIX" -name 'glib-2.0.pc' 2>/dev/null | head -3 | sed 's/^/  /'
   log "Sanity: freetype2.pc resolved by pkg-config: $(pkg-config --variable=pcfiledir freetype2 2>/dev/null || echo MISSING)"
   log "Sanity: glib-2.0.pc resolved by pkg-config: $(pkg-config --variable=pcfiledir glib-2.0 2>/dev/null || echo MISSING)"
-  export CFLAGS="-O2 -g -I$BREW_PREFIX/include"
+  log "pkg-config --cflags freetype2: $(pkg-config --cflags freetype2 2>&1 || echo FAIL)"
+  log "pkg-config --libs freetype2: $(pkg-config --libs freetype2 2>&1 || echo FAIL)"
+
+  # Wine's configure checks for ft2build.h via AC_CHECK_HEADER which uses bare
+  # CPPFLAGS (NOT pkg-config output for this specific header existence test).
+  # ft2build.h lives at $BREW_PREFIX/include/freetype2/ft2build.h, so a plain
+  # -I$BREW_PREFIX/include doesn't reach it (#include <ft2build.h> needs the
+  # freetype2 subdir on the include path). Pull pkg-config's CFLAGS into the
+  # global CFLAGS so the freetype2 include dir is part of the test compile.
+  local _ft_cflags
+  _ft_cflags="$(pkg-config --cflags freetype2 2>/dev/null || true)"
+  export CFLAGS="-O2 -g -I$BREW_PREFIX/include $_ft_cflags"
+  export CPPFLAGS="$CFLAGS"
   export LDFLAGS="-L$BREW_PREFIX/lib -L$BREW_PREFIX/opt/vulkan-loader/lib -L$BREW_PREFIX/opt/molten-vk/lib"
+  log "CFLAGS: $CFLAGS"
 
   # Match upstream Whisky's bundle exactly: x86_64-only Wine, runs via Rosetta 2
   # on Apple Silicon. Bundle layout produced is:
@@ -255,7 +268,7 @@ build_wine() {
   # what little remained. Run the entire build under `arch -x86_64` so configure
   # auto-detects host=x86_64-apple-darwin.
   log "Configuring wine x86_64 (host build under Rosetta, $(sysctl -n hw.ncpu) cores)"
-  (
+  if ! (
     cd "$build64"
     arch -x86_64 "$src/configure" \
       --prefix="$prefix" \
@@ -266,7 +279,11 @@ build_wine() {
       --without-opengl \
       --with-freetype --with-gnutls --with-gstreamer --with-mingw \
       --with-vulkan --with-coreaudio
-  )
+  ); then
+    log "configure failed — dumping config.log around freetype:"
+    grep -B 2 -A 20 -E "ft2build|freetype|FREETYPE" "$build64/config.log" 2>/dev/null | head -100 | sed 's/^/  /' >&2 || true
+    exit 1
+  fi
 
   log "Building wine with $JOBS jobs (under Rosetta)"
   arch -x86_64 make -C "$build64" -j"$JOBS"
