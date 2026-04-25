@@ -249,12 +249,16 @@ build_wine() {
   # Wine's configure checks for ft2build.h via AC_CHECK_HEADER which uses bare
   # CPPFLAGS (NOT pkg-config output for this specific header existence test).
   # ft2build.h lives at $BREW_PREFIX/include/freetype2/ft2build.h, so a plain
-  # -I$BREW_PREFIX/include doesn't reach it (#include <ft2build.h> needs the
-  # freetype2 subdir on the include path). Pull pkg-config's CFLAGS into the
-  # global CFLAGS so the freetype2 include dir is part of the test compile.
-  local _ft_cflags
-  _ft_cflags="$(pkg-config --cflags freetype2 2>/dev/null || true)"
-  export CFLAGS="-O2 -g -I$BREW_PREFIX/include $_ft_cflags"
+  # -I$BREW_PREFIX/include doesn't reach it.
+  #
+  # Phase1i confirmed `pkg-config --cflags freetype2` returns EMPTY because
+  # zlib/bzip2/libpng are keg-only on macOS — pkg-config can't resolve those
+  # transitive deps and bails. Hardcode -I<prefix>/include/freetype2 directly.
+  local _ft_inc=""
+  if [ -d "$BREW_PREFIX/include/freetype2" ]; then
+    _ft_inc="-I$BREW_PREFIX/include/freetype2"
+  fi
+  export CFLAGS="-O2 -g -I$BREW_PREFIX/include $_ft_inc"
   export CPPFLAGS="$CFLAGS"
   export LDFLAGS="-L$BREW_PREFIX/lib -L$BREW_PREFIX/opt/vulkan-loader/lib -L$BREW_PREFIX/opt/molten-vk/lib"
   log "CFLAGS: $CFLAGS"
