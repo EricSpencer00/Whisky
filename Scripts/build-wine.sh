@@ -50,14 +50,21 @@ require xcrun
 # The Alex4386 gist (https://gist.github.com/Alex4386/4cce275760367e9f5e90e2553d655309)
 # has the definitive CrossOver Mac build recipe. We replicate the essential
 # dependency set here. Users on a fresh macOS will need:
-BREW_DEPS=(
+#
+# Split into ARM-side tools (used during build, arch-agnostic) and x86_64-side
+# libraries (linked into the Rosetta Wine binary, must be x86_64). On CI the
+# x86_64 libs live under /usr/local; on local machines they may be in either
+# brew prefix — check_brew tolerates both.
+BREW_TOOLS=(
   bison
   flex
+  pkgconf
+)
+BREW_LIBS=(
   gst-plugins-base
   freetype
   gnutls
   molten-vk
-  pkgconf
   sdl2
   vulkan-headers
   vulkan-loader
@@ -75,8 +82,15 @@ check_brew() {
     exit 1
   }
   local missing=()
-  for p in "${BREW_DEPS[@]}"; do
+  for p in "${BREW_TOOLS[@]}"; do
     brew list --formula "$p" >/dev/null 2>&1 || missing+=("$p")
+  done
+  # Library deps may live in either brew prefix; on CI they're under x86_64
+  # brew at /usr/local. Accept whichever has them.
+  for p in "${BREW_LIBS[@]}"; do
+    if brew list --formula "$p" >/dev/null 2>&1; then continue; fi
+    if [ -x /usr/local/bin/brew ] && /usr/local/bin/brew list --formula "$p" >/dev/null 2>&1; then continue; fi
+    missing+=("$p")
   done
   if (( ${#missing[@]} > 0 )); then
     echo "Missing Homebrew deps: ${missing[*]}" >&2
