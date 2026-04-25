@@ -129,6 +129,50 @@ install_llvm_mingw() {
   log "llvm-mingw in PATH: $(which aarch64-w64-mingw32-clang)"
 }
 
+# ---- ccache wiring ----
+# Wraps the native compiler (clang) AND the llvm-mingw cross-compilers so
+# Wine's PE-side builds also hit the cache. Off by default; enabled when
+# `ccache` is on PATH (CI sets USE_CCACHE=1 + installs ccache). ccache
+# inspects argv[0] to decide which real compiler to dispatch to, so we
+# create symlinks named after each compiler all pointing at the ccache
+# binary, and prepend that dir to PATH.
+setup_ccache() {
+  # Prefer x86_64 ccache (from /usr/local brew) since the whole Wine build
+  # runs under arch -x86_64. ARM ccache from /opt/homebrew works in a pinch
+  # but mixes archs through the compile chain. Fall back to PATH lookup.
+  local ccache_path=""
+  if [ -x /usr/local/bin/ccache ]; then
+    ccache_path="/usr/local/bin/ccache"
+  elif command -v ccache >/dev/null 2>&1; then
+    ccache_path="$(command -v ccache)"
+  else
+    log "ccache not found — building without compiler cache"
+    return
+  fi
+  local ccache_bin
+  ccache_bin="$WORK_DIR/ccache-bin"
+  mkdir -p "$ccache_bin"
+  for cc in clang clang++ cc gcc g++ c++ \
+            aarch64-w64-mingw32-clang \
+            aarch64-w64-mingw32-clang++ \
+            i686-w64-mingw32-clang \
+            i686-w64-mingw32-clang++ \
+            x86_64-w64-mingw32-clang \
+            x86_64-w64-mingw32-clang++; do
+    ln -sf "$ccache_path" "$ccache_bin/$cc"
+  done
+  # Prepend so configure's compiler probes hit the symlinks first; ccache
+  # then walks the rest of PATH (including llvm-mingw/bin) to find the
+  # real binary by the same name.
+  export PATH="$ccache_bin:$PATH"
+  # Default size 5G is plenty; pin to 2G so CI cache stays under the
+  # actions/cache 10G limit even with many fork builds.
+  export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-2G}"
+  ccache --max-size="$CCACHE_MAXSIZE" >/dev/null 2>&1 || true
+  log "ccache enabled: $ccache_path (CCACHE_DIR=${CCACHE_DIR:-$HOME/.ccache}, max=$CCACHE_MAXSIZE)"
+  ccache --show-stats 2>/dev/null | head -10 | sed 's/^/  /' >&2 || true
+}
+
 # ---- fetch source ----
 fetch_source() {
   local tarball="$WORK_DIR/crossover-sources-${CROSSOVER_VERSION}.tar.gz"
@@ -406,6 +450,7 @@ PLIST
 main() {
   check_brew
   install_llvm_mingw
+  setup_ccache
   fetch_source
   build_wine
   package
