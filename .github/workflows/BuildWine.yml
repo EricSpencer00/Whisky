@@ -37,9 +37,27 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install build deps
+        # Wine is built x86_64-only under Rosetta (matches upstream Whisky's
+        # bundle layout). ARM64 brew at /opt/homebrew installs arm64 dylibs
+        # that the Rosetta linker can't pick up. Install a parallel x86_64
+        # brew at /usr/local and pull all build deps from there.
         run: |
+          # ARM brew (used by tools that don't care about arch — bison/flex)
           brew update --auto-update || true
-          brew install bison flex gst-plugins-base freetype gnutls molten-vk pkgconf sdl2 vulkan-headers vulkan-loader || true
+          brew install bison flex pkgconf || true
+
+          # x86_64 brew at /usr/local for libraries linked into Wine
+          if [ ! -x /usr/local/bin/brew ]; then
+            arch -x86_64 /bin/bash -c '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' < /dev/null
+          fi
+          arch -x86_64 /usr/local/bin/brew update --auto-update || true
+          arch -x86_64 /usr/local/bin/brew install \
+            gst-plugins-base freetype gnutls molten-vk \
+            sdl2 vulkan-headers vulkan-loader || true
+
+          # Sanity: confirm x86_64 dylibs are available
+          file /usr/local/opt/freetype/lib/libfreetype.dylib || true
+          file /usr/local/opt/gnutls/lib/libgnutls.dylib || true
 
       - name: Build Wine from CrossOver source
         env:
