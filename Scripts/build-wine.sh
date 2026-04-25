@@ -119,8 +119,11 @@ install_llvm_mingw() {
     for tool in dlltool windres ar nm objcopy ranlib strip lld-link; do
       [ -e "$tool" ] || [ ! -e "llvm-$tool" ] || ln -s "llvm-$tool" "$tool"
     done
-    # lld is available as ld.lld; winebuild may invoke bare 'ld'
-    [ ! -e ld ] && [ -e ld.lld ] && ln -s ld.lld ld
+    # lld is available as ld.lld; winebuild may invoke bare 'ld'.
+    # Wrap in if/then so a pre-existing `ld` doesn't fail under `set -e`.
+    if [ ! -e ld ] && [ -e ld.lld ]; then
+      ln -s ld.lld ld
+    fi
   )
   export PATH="$dest/bin:$PATH"
   log "llvm-mingw in PATH: $(which aarch64-w64-mingw32-clang)"
@@ -308,8 +311,11 @@ build_wine() {
     log "ERROR: $wine64_path not produced by build — aborting"
     exit 1
   fi
+  # Wine 11 ships a single `wine` binary; `wine64` is just a compat symlink.
+  # macOS `stat -f%z` returns symlink path length (4 bytes for "wine"), so
+  # use -L to follow and report the actual target size.
   local wine64_size
-  wine64_size=$(stat -f%z "$wine64_path" 2>/dev/null || stat -c%s "$wine64_path" 2>/dev/null || echo 0)
+  wine64_size=$(stat -L -f%z "$wine64_path" 2>/dev/null || stat -L -c%s "$wine64_path" 2>/dev/null || echo 0)
   if [ "$wine64_size" -lt 8000 ]; then
     log "ERROR: $wine64_path is suspiciously small ($wine64_size bytes) — likely a broken build"
     exit 1
@@ -318,11 +324,11 @@ build_wine() {
     log "ERROR: $prefix/lib/wine/x86_64-unix backend missing — broken build"
     exit 1
   fi
-  if [ ! -e "$prefix/bin/wine64-preloader" ] && [ ! -e "$prefix/bin/wine-preloader" ]; then
-    log "ERROR: wine-preloader not produced — required on macOS for address-space setup"
-    exit 1
-  fi
-  log "Wine bundle sanity check OK: wine64=${wine64_size}B, x86_64-unix backend present, preloader present"
+  # Wine 11 doesn't ship wine-preloader on macOS x86_64 builds (configure
+  # sets WINEPRELOADER_LDFLAGS='' — the loader handles address space
+  # in-process). Confirmed against the working phase1 release which also
+  # has no preloader binary. Don't gate on it.
+  log "Wine bundle sanity check OK: wine64=${wine64_size}B, x86_64-unix backend present"
 
   # NOTE: Do NOT strip the binaries. Wine binaries on macOS rely on symbol
   # information for runtime resolution; strip -x corrupted prior bundles.
