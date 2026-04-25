@@ -196,12 +196,20 @@ build_wine() {
   export CFLAGS="-O2 -g -I$BREW_PREFIX/include"
   export LDFLAGS="-L$BREW_PREFIX/lib -L$BREW_PREFIX/opt/vulkan-loader/lib -L$BREW_PREFIX/opt/molten-vk/lib"
 
-  log "Configuring wine ($(nproc 2>/dev/null || sysctl -n hw.ncpu) cores, archs=aarch64,x86_64)"
+  # Match upstream Whisky's bundle exactly: x86_64-only Wine, runs via Rosetta 2
+  # on Apple Silicon. Bundle layout produced is:
+  #   bin/wine64, bin/wine64-preloader, bin/wineserver
+  #   lib/wine/{i386-windows, x86_32on64-unix, x86_64-unix, x86_64-windows}
+  # The aarch64,x86_64 multi-arch path was producing a broken stub bundle —
+  # x86_64-unix backend was silently failing and the strip step was destroying
+  # what little remained. Run the entire build under `arch -x86_64` so configure
+  # auto-detects host=x86_64-apple-darwin.
+  log "Configuring wine x86_64 (host build under Rosetta, $(sysctl -n hw.ncpu) cores)"
   (
     cd "$build64"
-    "$src/configure" \
+    arch -x86_64 "$src/configure" \
       --prefix="$prefix" \
-      --enable-archs=aarch64,x86_64 \
+      --enable-win64 \
       --disable-tests \
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \
@@ -210,22 +218,43 @@ build_wine() {
       --with-vulkan --with-coreaudio
   )
 
-  log "Building wine with $JOBS jobs"
-  make -C "$build64" -j"$JOBS"
+  log "Building wine with $JOBS jobs (under Rosetta)"
+  arch -x86_64 make -C "$build64" -j"$JOBS"
 
   log "Installing to $prefix"
-  make -C "$build64" install
+  arch -x86_64 make -C "$build64" install
 
-  # Whisky expects a `wine64` binary; Wine 11 unified to `wine`
+  # Wine 11 unified the `wine` and `wine64` launcher binaries. Whisky and most
+  # tooling still expect `wine64`. If only `wine` exists, link it.
   if [ -x "$prefix/bin/wine" ] && [ ! -e "$prefix/bin/wine64" ]; then
     ln -sf wine "$prefix/bin/wine64"
   fi
 
-  # Strip to save space
-  if command -v strip >/dev/null; then
-    find "$prefix/bin" -type f -perm +111 -exec strip -x {} + 2>/dev/null || true
-    find "$prefix/lib" -name "*.dylib" -exec strip -x {} + 2>/dev/null || true
+  # Sanity-check the produced bundle. If wine64 is missing or absurdly small,
+  # the build silently failed and we should NOT publish a release.
+  local wine64_path="$prefix/bin/wine64"
+  if [ ! -e "$wine64_path" ]; then
+    log "ERROR: $wine64_path not produced by build — aborting"
+    exit 1
   fi
+  local wine64_size
+  wine64_size=$(stat -f%z "$wine64_path" 2>/dev/null || stat -c%s "$wine64_path" 2>/dev/null || echo 0)
+  if [ "$wine64_size" -lt 8000 ]; then
+    log "ERROR: $wine64_path is suspiciously small ($wine64_size bytes) — likely a broken build"
+    exit 1
+  fi
+  if [ ! -d "$prefix/lib/wine/x86_64-unix" ]; then
+    log "ERROR: $prefix/lib/wine/x86_64-unix backend missing — broken build"
+    exit 1
+  fi
+  if [ ! -e "$prefix/bin/wine64-preloader" ] && [ ! -e "$prefix/bin/wine-preloader" ]; then
+    log "ERROR: wine-preloader not produced — required on macOS for address-space setup"
+    exit 1
+  fi
+  log "Wine bundle sanity check OK: wine64=${wine64_size}B, x86_64-unix backend present, preloader present"
+
+  # NOTE: Do NOT strip the binaries. Wine binaries on macOS rely on symbol
+  # information for runtime resolution; strip -x corrupted prior bundles.
 }
 
 # ---- package in Whisky Libraries layout ----
@@ -276,7 +305,8 @@ PLIST
   # the local-dev use case.
   log "Ad-hoc codesigning Unix-side binaries + libs"
   find "$stage/Libraries/Wine/bin" -type f -perm +111 -exec codesign --force --sign - {} + 2>/dev/null || true
-  find "$stage/Libraries/Wine/lib/wine/aarch64-unix" -name '*.so' -exec codesign --force --sign - {} + 2>/dev/null || true
+  find "$stage/Libraries/Wine/lib/wine/x86_64-unix" -name '*.so' -exec codesign --force --sign - {} + 2>/dev/null || true
+  find "$stage/Libraries/Wine/lib/wine/x86_32on64-unix" -name '*.so' -exec codesign --force --sign - {} + 2>/dev/null || true
   find "$stage/Libraries/Wine/lib" -maxdepth 2 -name '*.dylib' -exec codesign --force --sign - {} + 2>/dev/null || true
 
   log "Creating Libraries.tar.gz"
