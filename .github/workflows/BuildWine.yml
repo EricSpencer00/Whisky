@@ -53,7 +53,8 @@ jobs:
           arch -x86_64 /usr/local/bin/brew update --auto-update || true
           arch -x86_64 /usr/local/bin/brew install \
             gst-plugins-base freetype gnutls molten-vk \
-            sdl2 vulkan-headers vulkan-loader || true
+            sdl2 vulkan-headers vulkan-loader \
+            zlib bzip2 libpng || true
 
           # Sanity: confirm x86_64 dylibs are available
           file /usr/local/opt/freetype/lib/libfreetype.dylib || true
