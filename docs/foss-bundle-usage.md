@@ -35,7 +35,7 @@ time (or before deleting `~/Library/Application Support/com.isaacmarovitz.Whisky
 to force re-bootstrap):
 
 ```sh
-export WHISKY_WINE_BASE_URL="https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.1.0-foss-phase1k"
+export WHISKY_WINE_BASE_URL="https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.1.0-foss-phase1l"
 open -a Whisky
 ```
 
@@ -65,6 +65,32 @@ End-to-end visual proof on M1 Max + macOS 26 Tahoe with this stack:
   (D3D11)` adapter, all shaders compile. World render blocked by
   Ultralight UI shared-texture handshake (see "Known limitations").
 
+## Vulkan portability gotcha
+
+MoltenVK ships as a Vulkan **portability driver** (`is_portability_driver:
+true` in `MoltenVK_icd.json`). Per the portability subset spec, applications
+that create a Vulkan instance with a portability driver must enable
+`VK_KHR_portability_enumeration` and pass the
+`VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR` flag — otherwise
+`vkCreateInstance` returns `VK_ERROR_INCOMPATIBLE_DRIVER (-9)`.
+
+Wine 11's `win32u_vkCreateInstance` does NOT enable that extension, so
+when wined3d-vulkan (or any Wine app talking Vulkan via win32u) tries to
+create an instance, it gets -9 and falls back to no-renderer. **Workaround:
+copy the ICD JSON and flip `is_portability_driver` to `false`:**
+
+```sh
+mkdir -p ~/.config/vulkan/icd.d
+sed 's/"is_portability_driver" : true/"is_portability_driver" : false/' \
+  /usr/local/etc/vulkan/icd.d/MoltenVK_icd.json \
+  > ~/.config/vulkan/icd.d/MoltenVK_icd_noport.json
+export VK_ICD_FILENAMES="$HOME/.config/vulkan/icd.d/MoltenVK_icd_noport.json"
+```
+
+The Vulkan loader then treats MoltenVK as a non-portability driver and stops
+demanding the portability bit. Until Wine itself learns to set the flag,
+this env override is required for any wined3d-vulkan path on macOS.
+
 ## Known limitations
 
 - **Apps using `IDXGIResource::GetSharedHandle()` (NT handle variant)
@@ -72,12 +98,23 @@ End-to-end visual proof on M1 Max + macOS 26 Tahoe with this stack:
   KMT. This blocks any app that composites GPU textures across process
   boundaries via shared D3D11 resources. Most notably: BeamNG.drive's
   Ultralight-based UI. Tracked at https://github.com/doitsujin/dxvk
-  as "shared NT handle" issues.
+  as "shared NT handle" issues. Workaround in progress: force builtin
+  wined3d via `WINEDLLOVERRIDES="dxgi,d3d11,d3d10core=b"` so wineserver
+  mediates the handle (no Vulkan extension required).
 - **No SChannel TLS** — see above. Use `WINEDLLOVERRIDES=schannel=n`
   with a native Windows `schannel.dll` if absolutely required, or wait
   for the x86_64-brew CI fix.
 - **No GPTK / D3DMetal** — bring your own from Apple Developer or
   Gcenx tooling. The bundle pins DXVK as the D3D backend.
+
+## BeamNG-specific notes
+
+The earlier `beamng.drive.x64.exe.foss-noCefFatal-bak` patch (single byte
+flip from `E8` CALL to `C3` RET at offset `0xBD8E81`) breaks BeamNG: it
+neuters the wrong call and the parent function returns prematurely,
+killing init right after `saveStoredVersion`. **Don't apply that patch.**
+The unmodified BeamNG binary boots cleanly past CPU detection and
+DirectInput init under our Wine 11 build.
 
 ## Building it yourself
 
