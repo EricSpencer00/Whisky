@@ -181,6 +181,20 @@ patch_source() {
   else
     log "WARN: Hack 18311 patch or wined3d directx.c not found — skipping"
   fi
+
+  # Phase 1n: suppress OutputDebugString debug-print exception on macOS.
+  # See docs/phase1n-output-debug-string-findings.md.
+  local debugpatch="$script_dir/patches/cw-hack-output-debug-string-suppress.patch"
+  if [ -f "$debugpatch" ] && [ -f "$wine_src/dlls/kernelbase/debug.c" ]; then
+    log "Applying CW HACK: OutputDebugString exception suppression"
+    if ( cd "$wine_src" && patch -p1 --forward --silent < "$debugpatch" ); then
+      :
+    else
+      log "WARN: OutputDebugString patch returned non-zero — may already be applied"
+    fi
+  else
+    log "WARN: OutputDebugString patch or kernelbase/debug.c not found — skipping"
+  fi
 }
 
 # ---- configure + build wine ----
