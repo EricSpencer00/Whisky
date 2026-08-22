@@ -100,3 +100,50 @@ Once the MVP launches a D3D11 app to a visible window, iterate on the specific b
 ## Current playable state
 
 **None on open source alone.** CrossOver-with-D3DMetal gets the closest playable experience today (visible window, reaches main loop), but it's paid and the UI doesn't paint. The open-source plan above is the path out.
+
+## 2026-08-22 session: DXVK 3.0.2 tested — the NT-handle plan is dead on macOS; wined3d-vk reaches device creation but caps at FL9
+
+Empirical results on M1 Max / macOS 26 / phase1l bundle (Wine 11 + MoltenVK 1.4.1), BeamNG 0.38.5:
+
+| Stack | Result | Blocker |
+|---|---|---|
+| DXVK **3.0.2** (ships PR 5257 NT shared handles, merged 2025-11) | ✗ no adapter | `Skipping: Device does not support required feature 'geometryShader'` — DXVK 3.x hard-filters devices on GS; Metal/MoltenVK has none (MoltenVK 1.4.2, Jul 2026, still no GS — KhronosGroup/MoltenVK#203 open) |
+| wined3d-vulkan (`WINEDLLOVERRIDES="dxgi,d3d11,d3d10core,d3d9=b"`) | ✗ but CLOSE | Adapter enumerates as "Apple M1 Max (D3D11)", device creates, modes enumerate — then BeamNG rejects: "Highest DX version supported: 9". wined3d caps the feature level without GS/other Vulkan features |
+
+So the two April "workarounds in test" both resolved negative for BeamNG:
+DXVK-with-NT-handles can't even init on macOS, and wined3d-vk initializes but
+reports FL 9. **FL11-on-FOSS is blocked upstream on geometry-shader support
+in the Vulkan-on-Metal layer**, not on anything in this repo.
+
+Practical paths, in order:
+1. **D3DMetal drop-in** (user-installs GPTK; not redistributable): FL11 with GS emulated. Remaining bug is the April Ultralight shared-texture timeout — worth retesting on Wine 11 + this bundle, since wineserver mediates NT handles for D3DMetal the same way CrossOver does.
+2. **MoltenVK GS emulation** — upstream, tracked in MoltenVK#203; no ETA.
+3. **KosmicKrisp / Mesa Vulkan-on-Metal** — full-featured Vulkan driver effort; needs an x86_64 or universal build before Rosetta Wine can use it.
+
+### Environment fixes that ARE ours and now work (keep these)
+
+- Wine's `win32u` dlopens `libvulkan.1.dylib` and does NOT search `/usr/local/lib`
+  or the bundle. Fix that unblocked everything: symlink MoltenVK into the Wine
+  unix dir it *does* search:
+  `ln -s ../../../external/libMoltenVK.dylib $WINE/lib/wine/x86_64-unix/libvulkan.1.dylib`
+  (a `CX_LIBVULKAN` env override exists in the binary but did not take effect).
+  This also bypasses the Vulkan loader, making the ICD portability workaround
+  unnecessary for the wined3d/DXVK path.
+- MoltenVK 1.4.1 then enumerates fine: Vulkan 1.4, 153 extensions, M1 Max visible.
+
+### New bug found: BeamNG DirectInput init race (Wine 11 phase1l)
+
+With `WINEDEBUG=-all`, BeamNG reliably stalls forever right after
+"Initializing DirectInput..." (game+wineserver both ~50% CPU;
+libScePad's HID SetupDi poll loop runs but is benign). With `WINEDEBUG=+relay`
+the same binary/bottle passes enumeration in 0.03s every time — a timing race
+somewhere in dinput/rawinput init, not present in April's phase1k tests
+(64-bit-only bundle, winebus couldn't load). Not root-caused yet. Workarounds
+tried that did NOT help: WINEESYNC/WINEMSYNC off, winebus Start=4, parking
+winebus/winehid/winebth/winexinput.sys, purging HID Enum/DeviceClasses from
+system.reg. April's runs launched via Whisky.app (GUI session) — untested
+whether that avoids it.
+
+Caveat for future sessions: `HKLM\...\Services\winebus Start=4` while
+winedevice processes are being SIGKILLed can wedge the prefix so hard that
+`wineboot -u` hangs; revert to Start=3 fixes it.
