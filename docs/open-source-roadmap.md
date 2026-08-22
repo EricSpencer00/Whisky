@@ -147,3 +147,35 @@ whether that avoids it.
 Caveat for future sessions: `HKLM\...\Services\winebus Start=4` while
 winedevice processes are being SIGKILLed can wedge the prefix so hard that
 `wineboot -u` hangs; revert to Start=3 fixes it.
+
+### D3DMetal drop-in tested (same session) — installs, loads, does NOT take over
+
+GPTK 3.0 D3DMetal was recovered locally from the Sikarugir BeamNG wrapper
+(`~/Applications/Sikarugir/BeamNG.app/Contents/Frameworks/renderer/d3dmetal`,
+`CFBundleShortVersionString 3.0`, x86_64) — framework + `libd3dshared.dylib`
++ paired PE/unixlib `d3d11`/`d3d12`/`dxgi`. Installed both supported ways:
+
+1. PE+unixlib into the Wine bundle (`lib/wine/x86_64-{windows,unix}/`) —
+   breaks the loader outright: `import_dll ... d3d11.dll not found`, exit 53.
+2. Framework in `lib/external/`, GPTK PE DLLs native in the bottle's
+   `system32` (the layout the April `.d3dmetal-bak` files show) —
+   DLLs load (`loaddll: Loaded C:\windows\system32\d3d11.dll ... builtin`),
+   but D3DMetal is **never mapped into the process** (`vmmap` shows no
+   D3DMetal / libd3dshared), wined3d logs `Using the Vulkan renderer for
+   d3d10/11 applications`, and BeamNG again reports **"Highest DX version
+   supported: 9"**.
+
+This build does carry CrossOver's backend switch (`CX_ACTIVE_GRAPHICS_BACKEND`
+with a `d3dmetal` value is present in `win32u.so`), and setting it
+`=d3dmetal` changes nothing on its own.
+
+Read: GPTK 3.0's unixlib is built against the Wine unixlib ABI of its host
+(Sikarugir ships Wine 8.0.1), so on this Wine 11 build the PE half loads and
+silently falls back to wined3d instead of reaching Metal. Making D3DMetal
+work here needs a GPTK build matching this Wine's unixlib version — i.e.
+the D3DMetal shipped with the CrossOver whose Wine we build from (26.1.0),
+not the Sikarugir/GPTK-3.0 copy. That is the next thing to try.
+
+Net: all three FOSS-ish D3D11 backends are now characterized on Wine 11 —
+DXVK blocked by geometry shaders, wined3d-vulkan caps at FL9, D3DMetal 3.0
+ABI-mismatched. No FL11 path on this bundle today.
