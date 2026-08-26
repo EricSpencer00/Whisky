@@ -180,7 +180,35 @@ Net: all three FOSS-ish D3D11 backends are now characterized on Wine 11 —
 DXVK blocked by geometry shaders, wined3d-vulkan caps at FL9, D3DMetal 3.0
 ABI-mismatched. No FL11 path on this bundle today.
 
-### 2026-08-26: FL 11_1 works — D3DMetal from CrossOver 26.1.0 on this Wine 11 bundle
+### 2026-08-26: FL 11_1 on a free stack — DXMT on the FOSS Wine 11 bundle
+
+**This is the one that matters.** DXMT (github.com/3Shain/dxmt, LGPL-2.1-or-later)
+implements D3D11 and D3D10 on Metal directly. No Vulkan, so the geometry-shader
+wall that stops DXVK and wined3d does not apply, and no paid software anywhere
+in the stack.
+
+```
+$ ./Scripts/run-d3d11-probe.sh dxmt-install
+$ ./Scripts/run-d3d11-probe.sh probe
+device    hr=0x00000000 featurelevel=0xb100
+adapter=Apple M1 Max vendor=0x106b device=0x0000 vram=26542MB
+swapchain hr=0x00000000 featurelevel=0xb100
+present   hr=0x00000000
+```
+
+Feature level **11_1**, device and swapchain, clear and Present both S_OK, on
+the Wine 11 bundle `Scripts/build-wine.sh` produces. The adapter is the real
+Apple M1 Max rather than the spoofed AMD card D3DMetal reports.
+
+The v0.80 `-builtin` release is laid out for exactly this: pure-PE
+`d3d11`/`dxgi`/`d3d10core` plus one `winemetal.so` unixlib, so it has none of
+the symlink trouble the GPTK layout has. `dxmt-install` fetches and installs it;
+`dxmt-restore` puts the bundle back to 9_3.
+
+Every piece is redistributable: Wine is LGPL, DXMT is LGPL-2.1. Nothing in this
+path requires CrossOver or an Apple Developer account.
+
+### 2026-08-26: the same number via CrossOver's D3DMetal — reference only
 
 `Scripts/run-d3d11-probe.sh d3dmetal-install` on the FOSS Wine 11 bundle, then
 `Scripts/d3d11-probe.c`:
@@ -197,10 +225,11 @@ both return S_OK. CrossOver 26.1.0 on the same machine returns exactly the same
 numbers. The stock bundle returns `0x9300` (9_3), so the delta is real and
 measured by the same binary in the same bottle.
 
-D3DMetal is Apple's, under a licence that forbids redistribution, so this is a
-drop-in from the user's own CrossOver install, not something the bundle can
-ship. The Wine it runs on is LGPL and built from source by
-`Scripts/build-wine.sh`.
+D3DMetal is Apple's, under a licence that forbids redistribution, and it ships
+inside CrossOver, which is paid. This path is therefore a **reference
+measurement only** — it proved the bundle can carry an 11_1 D3D11 device before
+DXMT was tried, and it is useful for A/B when DXMT misbehaves. Use
+`dxmt-install` for anything real.
 
 #### What the layout has to be
 
