@@ -1,0 +1,111 @@
+# CW HACK (Whisky FOSS phase-1n): Suppress DBG_PRINTEXCEPTION_C(_WIDE) in
+# OutputDebugStringA/W on macOS Wine.
+#
+# Source: WineHQ Wine 11.0 (built from CrossOver 26.1.0 LGPL source).
+# Distributed under LGPL-2.1+ (same license as Wine itself).
+#
+# Background: Wine's OutputDebugStringA/W implementation raises a
+# DBG_PRINTEXCEPTION_C / DBG_PRINTEXCEPTION_WIDE_C exception so an attached
+# debugger can intercept the debug message. The raise is wrapped in a local
+# __TRY/__EXCEPT(debug_exception_handler) so when no debugger is attached the
+# exception is consumed by Wine and execution continues.
+#
+# On macOS, this fails for applications that have installed a Vectored
+# Exception Handler (VEH). VEHs run BEFORE the SEH frame walk reaches Wine's
+# local __EXCEPT. Most Unreal Engine games install a VEH-based crash handler
+# that treats DBG_PRINTEXCEPTION_C as fatal, captures the stack, and calls
+# ExitProcess — even though no actual error occurred (it was just UE's
+# `check()` macro logging an assertion via UE_LOG → FOutputDeviceWindowsError
+# → OutputDebugStringA).
+#
+# Empirically reproduced with Rocket League (Update 58.1, CL-517210) on
+# Whisky / CrossOver 26 / Wine 11 on Apple Silicon macOS 26. UE's
+# `check(HasFocusFunction)` at Engine/Source/Runtime/Core/Private/Misc/App.cpp:367
+# fires during EOS SDK init; OutputDebugStringA is called; the VEH crash
+# handler wins the SEH race; process exits — RL never reaches a visible
+# window. WINEDEBUG=+seh confirms the exception chain.
+#
+# Effect: in Whisky's macOS-targeted bundle, the function logs via WARN()
+# (visible with WINEDEBUG=+module) and returns. Applications running under
+# an attached debugger lose the debug-event notification — acceptable
+# trade-off vs. "modern UE games crash unconditionally."
+#
+# Upstream gating: the macro __APPLE__ is not defined when cross-compiling
+# Windows-target DLLs with llvm-mingw, so a build-time #ifdef won't work for
+# this code path. Wine doesn't currently surface a "PE build for macOS host"
+# compile-time check. Long-term, the right fix is detecting "no debugger
+# attached AND VEH-equipped host" at runtime, or fixing the VEH ordering in
+# winemac.drv. Short-term, this bundle is macOS-only so the unconditional
+# return is correct here.
+#
+# Apply with:  cd <wine-src> && patch -p1 < cw-hack-output-debug-string-suppress.patch
+
+--- a/dlls/kernelbase/debug.c
++++ b/dlls/kernelbase/debug.c
+@@ -187,21 +187,21 @@ void WINAPI DECLSPEC_HOTPATCH OutputDebugStringA( LPCSTR str )
+     if (!str) str = "";
+     WARN( "%s\n", debugstr_a(str) );
+ 
+-    /* raise exception, WaitForDebugEvent() will generate a corresponding debug event */
+-    __TRY
+-    {
+-        ULONG_PTR args[2];
+-        args[0] = strlen(str) + 1;
+-        args[1] = (ULONG_PTR)str;
+-        RaiseException( DBG_PRINTEXCEPTION_C, 0, 2, args );
+-    }
+-    __EXCEPT(debug_exception_handler)
+-    {
+-        caught_by_dbg = FALSE;
+-    }
+-    __ENDTRY
+-    if (caught_by_dbg) return;
++    /* CW HACK (Whisky macOS-bundle): Skip the RaiseException(DBG_PRINTEXCEPTION_C, ...)
++     * call. Unreal Engine games (Rocket League, BeamNG, others) install
++     * Vectored Exception Handlers as part of their crash-reporter that
++     * intercept this debug-print exception BEFORE our local __EXCEPT can
++     * catch it, treat it as fatal, capture a stack trace, and call ExitProcess.
++     * The exception is only useful when a debugger is attached; without one,
++     * dropping it costs nothing and unblocks UE's `check()` assertion logging.
++     * Net effect on a normal run: OutputDebugStringA = WARN() log only. See
++     * docs/phase1n-output-debug-string-findings.md for the full diagnosis. */
++    (void)last_error;
++    return;
+ 
+     /* send string to a system-wide monitor */
+     if (!mutex_inited)
+@@ -284,28 +284,9 @@ void WINAPI DECLSPEC_HOTPATCH OutputDebugStringW( LPCWSTR str )
+ 
+     WARN( "%s\n", debugstr_w(str) );
+ 
+-    RtlInitUnicodeString( &strW, str );
+-    if (!RtlUnicodeStringToAnsiString( &strA, &strW, TRUE ))
+-    {
+-        BOOL exc_handled;
+-
+-        __TRY
+-        {
+-            ULONG_PTR args[4];
+-            args[0] = wcslen(str) + 1;
+-            args[1] = (ULONG_PTR)str;
+-            args[2] = strlen(strA.Buffer) + 1;
+-            args[3] = (ULONG_PTR)strA.Buffer;
+-            RaiseException( DBG_PRINTEXCEPTION_WIDE_C, 0, 4, args );
+-            exc_handled = TRUE;
+-        }
+-        __EXCEPT(debug_exception_handler_wide)
+-        {
+-            exc_handled = FALSE;
+-        }
+-        __ENDTRY
+-
+-        if (!exc_handled)
+-            OutputDebugStringA( strA.Buffer );
+-
+-        RtlFreeAnsiString( &strA );
+-    }
++    /* CW HACK: skip the wide-char debug-print exception too (same reason). */
++    (void)strW;
++    (void)strA;
++    return;
+ }
