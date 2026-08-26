@@ -315,3 +315,98 @@ swapchain result, not a "BeamNG runs" result. What the numbers license: a
 D3D11 11_1 device on the FOSS Wine 11 bundle, with a working swapchain and
 Present, matching CrossOver. What they do not: anything about the Ultralight
 NT-shared-handle path, the DirectInput race, or frame rate.
+
+### 2026-08-26 (later): BeamNG on the free stack — boots, then hangs in input init
+
+BeamNG.drive 0.38.5 (build 19602) **is** installed on the test machine, at
+`drive_c/steamcmd/steamapps/common/BeamNG.drive` in bottle `8AAFE391…` — 48 GB,
+downloaded via steamcmd. It was missed earlier by searching only `Program Files`.
+The binary is verified pristine: byte-identical to
+`BeamNG.drive.x64.exe.foss-noCefFatal-bak`, and differing from
+`.foss-broken-bak-*` by exactly the one patched byte (`C3` → `E8`) at
+`0xBD9240`.
+
+On the FOSS bundle (Wine 11 + DXMT 0.80) it boots through version save, crash
+reporter, VFS, CPU detect, then stops at:
+
+```
+0.72|D|input| Initializing DirectInput...
+```
+
+with one core spinning. Two separate blockers, both diagnosed:
+
+**1. `dinput8.dll` load deadlocks on the Wine loader lock.**
+
+```
+err:sync:RtlpWaitForCriticalSection section ... "loader.c: loader_section"
+    wait timed out in thread 0178, blocked by 0024
+```
+
+Thread 0024 holds the loader lock inside `LoadLibrary("DInput8.dll")`; thread
+0178 needs the same lock for `LdrResolveDelayLoadedAPI` after finishing its
+`THREAD_ATTACH` callouts. The earlier "DirectInput race — passes under
+`+relay`" note was reading the symptom: `+relay` only changes which thread
+takes the lock first.
+
+`WINEDLLOVERRIDES="dinput8="` gets past it. BeamNG treats it as non-fatal
+(`Failed to initialize Direct Input`) and continues — at the cost of wheel and
+gamepad support.
+
+**2. A second hang immediately after platform detection.** Last line is
+`platform| Microsoft Windows 10 (v10.0), 64-bit, Wine 11.0`; CrossOver's next
+lines are `blacklist::getDLLInfo`, then `Physical memory`. The spin is BeamNG's
+own wait-for-worker helper at `BeamNG.drive.x64.exe+0xdf9a30`:
+
+```
+cmp  %sil, 0x14220479b        ; done flag
+je   exit
+call 0x140e001f0              ; poll (drives the setupapi HID enumeration)
+...
+call *timeBeginPeriod ; Sleep(4) ; call *timeEndPeriod
+```
+
+`GlobalMemoryStatusEx`, `GetSystemPowerStatus` and `GetPriorityClass` all
+return correctly on this build when called from a standalone probe, so the
+platform calls themselves are not the hang.
+
+**CrossOver 26.1.0 runs the same binary past both**, on the same machine, from
+a bottle symlinked to the same game directory: DirectInput enumerates Wine
+Mouse and Wine Keyboard in 0.1 s, all 119 modules load, FMOD initialises, and
+it creates a D3D11 device — `AMD Compatibility Mode (D3D11)`, shader model 5.0,
+26 video modes. So the blockers are in **this Wine build**, not in Wine 11, not
+in DXMT, and not in the game.
+
+Ruled out as causes, each tested:
+
+- the prefix — a brand-new prefix hangs identically
+- `WINEESYNC=1`, `WINEMSYNC=1`, `WINEDEBUG=+timestamp` — no change
+- `crashrpt`, `xinput1_4`/`1_3`/`9_1_0` disabled — no change
+- winebus `DisableInput=1`; parking winebus/winehid/winexinput — no change
+- swapping in CrossOver's `dinput8.dll` PE — no change, so it is the loader
+  environment rather than dinput8 itself
+- missing HID devices — both prefixes register `HID\VID_845E&PID_0001/0002`
+  (ours under `ControlSet001`, which is why an early grep missed them)
+- a per-app CrossOver hack — `cxcompatdb.so` only supports appending a command
+  line, replacing an exe path, adding env vars, and the nvngx redirect, and has
+  no BeamNG entry
+
+Note also that `-windowed` is **not** a valid BeamNG argument: it makes
+`parseArgs.lua` fail with `attempt to call global 'setFullScreen'` and kills
+startup. Do not pass it.
+
+**Next**: the difference is build configuration or toolchain. Our PE DLLs are
+roughly 4x the size of CrossOver's (unstripped), and this build uses
+llvm-mingw for the PE side and `--enable-archs=i386,x86_64`. The roadmap
+already records that the DirectInput stall appeared with phase1l, which is
+exactly when WoW64 was turned on — a 64-bit-only rebuild is the first bisection
+step.
+
+### Steam client and CEF on Wine 11
+
+The earlier "Wine 7.7 + macOS 26 + CEF = universally broken" finding does not
+carry over. On this Wine 11 bundle the Steam client starts, reaches the network
+(`Connectivity test ... OK!`) and keeps **seven `steamwebhelper.exe` CEF
+processes alive** with no "Steamwebhelper is not responding". Steam's own UI
+does hit DXMT's `CreateSwapChain: cross-process swapchain not supported yet`
+(3Shain/dxmt#141), so use `steamcmd` for installing and updating games — it is
+a console app and needs no CEF at all.
