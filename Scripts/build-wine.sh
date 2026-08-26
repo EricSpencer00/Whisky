@@ -34,6 +34,14 @@ WORK_DIR="${WORK_DIR:-$(pwd)/build/wine-build}"
 OUT_DIR="${OUT_DIR:-$(pwd)/out}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
 
+# Which PE architectures Wine builds. "i386,x86_64" is New WoW64 (needed for
+# 32-bit installers and 32-bit Wine drivers). "x86_64" is 64-bit only.
+#
+# Bisection note: BeamNG's dinput8 loader-lock hang appeared when this went
+# from x86_64 to i386,x86_64 (phase1k -> phase1l), so a 64-bit-only build is
+# the first thing to compare against. See docs/open-source-roadmap.md.
+WINE_ARCHS="${WINE_ARCHS:-i386,x86_64}"
+
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
 # ---- prerequisite check ----
@@ -329,7 +337,7 @@ build_wine() {
     cd "$build64"
     arch -x86_64 "$src/configure" \
       --prefix="$prefix" \
-      --enable-archs=i386,x86_64 \
+      --enable-archs="$WINE_ARCHS" \
       --disable-tests \
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \

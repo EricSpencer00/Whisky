@@ -22,6 +22,10 @@ on:
         description: "Release tag to upload to (e.g. wine-v26.1.0)"
         required: true
         default: "wine-v26.1.0"
+      wine_archs:
+        description: "Wine --enable-archs (i386,x86_64 = WoW64; x86_64 = 64-bit only)"
+        required: false
+        default: "i386,x86_64"
   push:
     tags:
       - "wine-v*"
@@ -35,6 +39,7 @@ env:
   # honours the workflow_dispatch input override; the rest are tracked here
   # only so cache keys invalidate when we bump them in the scripts.
   CROSSOVER_VERSION: ${{ github.event.inputs.crossover_version || '26.1.0' }}
+  WINE_ARCHS: ${{ github.event.inputs.wine_archs || 'i386,x86_64' }}
   LLVM_MINGW_VERSION: "20260407"
   MOLTENVK_VERSION: "1.4.1"
   DXVK_VERSION: "2.7.1"
