@@ -180,11 +180,31 @@ Net: all three FOSS-ish D3D11 backends are now characterized on Wine 11 —
 DXVK blocked by geometry shaders, wined3d-vulkan caps at FL9, D3DMetal 3.0
 ABI-mismatched. No FL11 path on this bundle today.
 
-### 2026-08-26: CrossOver 26.1.0 D3DMetal drop-in — loads and maps, faults at device creation
+### 2026-08-26: FL 11_1 works — D3DMetal from CrossOver 26.1.0 on this Wine 11 bundle
 
-The previous section's "next thing to try" is now tried. CrossOver 26.1.0
-installs D3DMetal at
-`Contents/SharedSupport/CrossOver/lib64/apple_gptk/`:
+`Scripts/run-d3d11-probe.sh d3dmetal-install` on the FOSS Wine 11 bundle, then
+`Scripts/d3d11-probe.c`:
+
+```
+device    hr=0x00000000 featurelevel=0xb100
+adapter=AMD Compatibility Mode vendor=0x1002 device=0x66af vram=53084MB
+swapchain hr=0x00000000 featurelevel=0xb100
+present   hr=0x00000000
+```
+
+Feature level **11_1**, device and swapchain, with a clear and a Present that
+both return S_OK. CrossOver 26.1.0 on the same machine returns exactly the same
+numbers. The stock bundle returns `0x9300` (9_3), so the delta is real and
+measured by the same binary in the same bottle.
+
+D3DMetal is Apple's, under a licence that forbids redistribution, so this is a
+drop-in from the user's own CrossOver install, not something the bundle can
+ship. The Wine it runs on is LGPL and built from source by
+`Scripts/build-wine.sh`.
+
+#### What the layout has to be
+
+CrossOver keeps D3DMetal in `lib64/apple_gptk/`:
 
 ```
 apple_gptk/external/D3DMetal.framework
@@ -193,94 +213,76 @@ apple_gptk/wine/x86_64-windows/{d3d11,d3d12,dxgi,atidxx64,nvapi64,nvngx}.dll
 apple_gptk/wine/x86_64-unix/{d3d11,d3d12,dxgi,atidxx64,nvapi64,nvngx}.so
 ```
 
-That is a Wine dll-dir layout: PE half and unixlib half, one directory. Both
-halves are required. Layout 2 above (PE native in `system32`) orphans the
-unixlib, which is exactly why D3DMetal never appeared in `vmmap` — nothing was
-broken about the framework, the unix side was simply never loaded.
+Three things have to be right:
 
-`libd3dshared.dylib` and `D3DMetal.framework` must sit **next to** the
-unixlibs: `d3d11.so` links `@rpath/libd3dshared.dylib` with an `LC_RPATH` of
-`@loader_path`, and `libd3dshared` then tries
-`/System/Library/Frameworks/D3DMetal.framework/D3DMetal` (absent on stock
-macOS) before falling back to `@rpath/D3DMetal.framework/D3DMetal`.
+1. **Both halves.** The PE alone leaves the unixlib orphaned and the loader
+   falls through to wined3d — that is why the earlier "framework in
+   `lib/external`, PE native in system32" attempt showed D3DMetal never mapped.
+2. **The same CrossOver whose LGPL source built this Wine.** Apple's GPTK 3.0
+   copy targets the Wine 8.0.1 unixlib ABI and aborts on
+   `ntdll.dll.__wine_unix_call`.
+3. **The unixlibs are symlinks, not copies.** Every `.so` in
+   `apple_gptk/wine/x86_64-unix/` is a 33-byte symlink to the single
+   `../../external/libd3dshared.dylib`. `libd3dshared.dylib` and
+   `D3DMetal.framework` go beside them, because the unixlib links
+   `@rpath/libd3dshared.dylib` with an `LC_RPATH` of `@loader_path` and
+   libd3dshared then dlopens `@rpath/D3DMetal.framework/D3DMetal`.
 
-With the 26.1.0 files in place, D3DMetal loads for the first time:
+#### The bug that cost a day, and how it was found
 
-```
-dyld: .../x86_64-unix/D3DMetal.framework/Versions/A/D3DMetal
-dyld: .../Versions/A/Resources/libmetalirconverter.dylib
-dyld: .../Versions/A/Resources/libdxccontainer.dylib
-```
+Point 3 is not cosmetic. `cp` dereferences those symlinks, so copying gives
+dyld two independent Mach-O images of the same dylib, each with its own copy of
+`gWin32Dispatch` and the `dispatch_once` guards. The PE half initialises one
+image's dispatch table; D3DMetal then calls through the other image's, which is
+still all NULL. It faults with `rip=0` inside `InitSharedState`, long before
+any call into `winemac.drv` — which is why `+macdrv_d3dmtl` printed nothing.
 
-No `exit 53`, no `unimplemented function ntdll.dll.__wine_unix_call`. The
-ABI-mismatch diagnosis was right and matching the GPTK build to the Wine
-source fixes it.
-
-`D3D11CreateDevice` then faults:
-
-```
-seh:dispatch_exception code=c0000005 (EXCEPTION_ACCESS_VIOLATION) addr=0000000000000000
-rip=0000000000000000 rsp=000000000031fb68
-```
-
-A call through a NULL function pointer, followed by SEH recursion until the
-guard page goes. `+macdrv_d3dmtl,+dxgi,+d3d11` produces no output before the
-fault, so the crash precedes any call into `winemac.drv`'s vtable.
-
-Ruled out as causes:
-
-- **Missing imports.** CrossOver's `d3d11.dll` imports only
-  `kernel32.{DisableThreadLibraryCalls,LoadLibraryA,VirtualProtect}` and
-  `ntdll.{NtQueryVirtualMemory,__wine_unix_call}`. All satisfied.
-- **Missing host vtable export.** `dlls/winemac.drv/d3dmetal.c` publishes
-  `DECLSPEC_EXPORT struct macdrv_functions_t macdrv_functions`, and this build
-  exports it — `nm -gU winemac.so` is byte-for-byte the same three symbols as
-  CrossOver's (`__wine_unix_call_funcs`, `__wine_unix_call_wow64_funcs`,
-  `macdrv_functions`). The `C_ASSERT(sizeof(...) == 192)` in that file would
-  have failed the build on a layout mismatch.
-- **Missing `libd3dshared` bootstrap.** `ntdll/unix/loader.c` reads
-  `CX_APPLEGPTK_LIBD3DSHARED_PATH` and dlopens it for
-  `register_non_native_code_region`; this build does that and succeeds.
-
-What the LGPL tarball does **not** ship: `crossover-sources-26.1.0.tar.gz` is
-50,393 files and contains zero `cx*` dlls. The only D3DMetal source in it is
-`dlls/winemac.drv/d3dmetal{.c,_objc.m,_objc.h}` — the window/surface side.
-At startup this build's ntdll does:
+Located by having the probe install a vectored exception handler that dumps the
+faulting context and the raw stack, sleeping so `vmmap` could resolve the
+return address:
 
 ```
-dlopen(".../x86_64-unix/cxcompatdb.so") => NULL   (no such file)
+### VEH code=0xc0000005 rip=0000000000000000 rsp=000000000031fbc8
+### [rsp+000] = 0000000208b46721
+__TEXT  208b44000-208b4c000  .../x86_64-unix/d3d11.so
 ```
 
-`cxcompatdb.so` is "CW Hack 24067" in `loader.c`; the dlopen is a soft failure
-(WARN only), but that module is what owns `CX_GRAPHICS_BACKEND` /
-`set_graphics_backend` / `parse_graphics_backend_hack` and the
-`lib64/apple_gptk/wine` path (all present as strings in CrossOver's binary,
-none in the source tree). Setting `CX_GRAPHICS_BACKEND` and
-`CX_ACTIVE_GRAPHICS_BACKEND` by hand is not equivalent — whatever registration
-`cxcompatdb` performs leaves a slot NULL when it is absent. Reconstructing it
-means reverse-engineering a closed module, not a build-flag change.
+`d3d11.so+0x2721`, immediately after
+`callq *0x6aef(%rip)  ## gWin32Dispatch+0x28` — and `d3d11.so` having its own
+`__TEXT` range, distinct from `libd3dshared.dylib` at `208aff000`, is the whole
+bug in one line of `vmmap`.
 
-### Measure the feature level directly
+lldb is not usable for this: attaching to Wine under Rosetta leaves an
+orphaned `debugserver` that wedges every subsequent x86_64 process in
+uninterruptible wait. If Wine suddenly hangs at 0.02s CPU with no output,
+`pkill -9 debugserver` before assuming the bundle is broken.
 
-`Scripts/d3d11-probe.c` + `Scripts/run-d3d11-probe.sh` replace "launch BeamNG
-and read its log" with a two-second measurement:
+#### Corrections to earlier conclusions in this document
 
-```
-$ ./Scripts/run-d3d11-probe.sh probe
-D3D11CreateDevice hr=0x00000000 featurelevel=0x9300
-adapter=Apple M1 Max vendor=0x106b device=0x1a050207 vram=65536MB
-```
+- **`cxcompatdb.so` is not required.** It is closed-source and absent from the
+  LGPL tarball, and ntdll's `dlopen` of it fails here — but that dlopen is a
+  soft failure (CW Hack 24067, WARN only) and D3DMetal works without it.
+- **No environment variable turns D3DMetal on.** `CX_ACTIVE_GRAPHICS_BACKEND`
+  and `CX_GRAPHICS_BACKEND` make no difference; the probe returns 11_1 with an
+  empty environment. A working CrossOver run does not have
+  `CX_ACTIVE_GRAPHICS_BACKEND` in its environment either — inside CrossOver it
+  is a `+process` trace, not a switch anything reads at device creation.
+  `CX_APPLEGPTK_LIBD3DSHARED_PATH` is worth setting anyway: ntdll uses it to
+  register PE images as non-native code regions with Rosetta.
+- **"Blocked upstream on geometry shaders" applies to DXVK and wined3d only.**
+  Both go through Vulkan, and MoltenVK has no geometry shaders. D3DMetal talks
+  to Metal directly and never asks the question. The conclusion that no FL11
+  path exists on this bundle was wrong.
+- **The earlier `Highest DX version supported: 9` and DXVK measurements came
+  from a poisoned bottle**, whose `system32/{d3d11,dxgi,d3d10core}.dll` had been
+  renamed to `.dxvk-bak` / `.dxvk302` / `.d3dmetal-bak-<epoch>` and never
+  restored, so `LoadLibrary` returned `c0000135` before a renderer was reached.
+  `run-d3d11-probe.sh` detects this and runs `wineboot -u`.
 
-`0x9300` is feature level 9_3 — the same fact as BeamNG's "Highest DX version
-supported: 9", without the 40 GB install. `d3dmetal-install` and
-`d3dmetal-restore` switch the bundle between backends in place.
+#### Not yet established
 
-### Bottles poisoned by earlier experiments
-
-The bottle used for the April and August DXVK/D3DMetal runs had **no**
-`d3d11.dll`, `dxgi.dll` or `d3d10core.dll` in `system32` at all — they had been
-renamed to `.dxvk-bak`, `.dxvk302` and `.d3dmetal-bak-<epoch>` and never put
-back, so `LoadLibrary("d3d11.dll")` returned `c0000135` before any renderer was
-involved. Anything measured in such a bottle is measuring the rename, not the
-backend. `run-d3d11-probe.sh` checks for this and runs `wineboot -u` when the
-files are missing.
+BeamNG is not installed on the test machine, so this is a feature-level and
+swapchain result, not a "BeamNG runs" result. What the numbers license: a
+D3D11 11_1 device on the FOSS Wine 11 bundle, with a working swapchain and
+Present, matching CrossOver. What they do not: anything about the Ultralight
+NT-shared-handle path, the DirectInput race, or frame rate.
