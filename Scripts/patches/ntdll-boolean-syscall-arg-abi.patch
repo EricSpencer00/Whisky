@@ -1,71 +1,33 @@
-Fix BOOLEAN syscall arguments being read as full dwords on x86_64
+Narrow BOOLEAN syscall arguments at the PE/unix boundary.
 
-Wine's PE side is compiled for the Microsoft x64 ABI, where the upper bits of
-an argument narrower than 64 bits are *undefined* — the caller may write only
-the low byte. The unix side is compiled for the System V AMD64 ABI, where the
-caller is required to zero-extend sub-word arguments to 32 bits, so the
-compiler is entitled to test the full 32-bit register.
-__wine_syscall_dispatcher forwards the raw argument slot between the two, so
-that guarantee does not hold and stale stack garbage in the high bits makes a
-BOOLEAN argument read as TRUE when the caller passed FALSE.
+Fork-local. NOT submitted upstream — see docs/upstream-status.md for what is and
+is not established.
 
-Observed on macOS/aarch64 (Rosetta) with a PE side built by llvm-mingw, which
-emits
-
-    movb   $0x0,0x20(%rsp)      ; restart = FALSE, one byte only
-    mov    $0x1,%r9b            ; single_entry = TRUE, low byte only
-
-for kernelbase's GetLogicalDrives(), while the unix side compiles
-`restart ? 0 : *context` to
-
-    testl  %r8d,%r8d            ; tests 32 bits
-
-With garbage above the low byte, `restart` reads TRUE, `index` is pinned to 0,
-and GetLogicalDrives()'s
-
-    while (!NtQueryDirectoryObject( handle, info, sizeof(data), 1, 0, &ctx, &len ))
-
-never terminates: the same \DosDevices entry is returned forever. Because the
-thread doing this holds ntdll's loader lock (it is inside a DllMain), every
-other thread then times out in LdrResolveDelayLoadedAPI on loader_section, so
-the process appears to deadlock rather than spin.
-
-CrossOver's own build is unaffected only because its PE compiler happens to
-emit `movl $0x0,0x20(%rsp)` / `mov $0x1,%r9d`, zero-extending both arguments.
-That is luck, not a guarantee.
-
-Read the argument a byte at a time so the value is correct under either ABI.
-
-Note: 40 syscall entry points take a sub-word argument and are subject to the
-same hazard (NtWaitForSingleObject's `alertable`, NtQueryDirectoryFile's
-`single_entry`/`restart_scan`, ...). This patch fixes the two that are proven
-to hang BeamNG.drive; the general fix belongs in the dispatcher.
+GetLogicalDrives() loops forever on this bundle: our llvm-mingw PE build writes
+one byte of the `restart` argument slot, the System V unix side tests all 32
+bits of it, and __wine_syscall_dispatcher forwards the slot raw. Stale garbage
+above the low byte reads as TRUE, pinning the enumeration index at 0.
 
 --- a/dlls/ntdll/unix/sync.c
 +++ b/dlls/ntdll/unix/sync.c
-@@ -2070,6 +2070,21 @@
-     }
-     SERVER_END_REQ;
-     return ret;
-+}
-+
-+
-+/* The PE side of Wine is Microsoft-x64-ABI code, where the high bits of an
-+ * argument narrower than 64 bits are undefined and a caller may write only the
-+ * low byte.  The unix side is System-V code, where the caller is required to
-+ * zero-extend such arguments and the compiler is therefore entitled to test the
-+ * full 32-bit register.  __wine_syscall_dispatcher forwards the raw argument
-+ * slot between the two, so that guarantee does not hold across the syscall
-+ * boundary and stale garbage in the high bits reads as TRUE.  Force a
-+ * byte-wide read of the incoming value.
+@@ -2073,6 +2073,16 @@
+ }
+ 
+ 
++/* The PE side may pass a BOOLEAN with garbage in the high bits: the MS x64 ABI
++ * leaves them undefined, while the System V ABI this side is built for lets the
++ * compiler assume they were zero-extended.
 + */
 +static inline int syscall_bool_arg( BOOLEAN value )
 +{
 +    return *(volatile unsigned char *)&value != 0;
- }
- 
- 
-@@ -2081,7 +2096,8 @@
++}
++
++
+ /**************************************************************************
+  *           NtQueryDirectoryObject   (NTDLL.@)
+  */
+@@ -2081,7 +2091,8 @@
                                          ULONG *context, ULONG *ret_size )
  {
      unsigned int status, i, count, total_len, pos, used_size, used_count, strpool_head;
@@ -75,7 +37,7 @@ to hang BeamNG.drive; the general fix belongs in the dispatcher.
      struct directory_entry *entries;
  
      if (!(entries = malloc( size ))) return STATUS_NO_MEMORY;
-@@ -2090,7 +2106,7 @@
+@@ -2090,7 +2101,7 @@
      {
          req->handle = wine_server_obj_handle( handle );
          req->index = index;
@@ -84,7 +46,7 @@ to hang BeamNG.drive; the general fix belongs in the dispatcher.
          wine_server_set_reply( req, entries, size );
          status = wine_server_call( req );
          count = reply->count;
-@@ -2159,7 +2175,7 @@
+@@ -2159,7 +2170,7 @@
          return STATUS_NO_MORE_ENTRIES;
      }
  
