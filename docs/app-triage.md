@@ -111,6 +111,22 @@ from a prefix problem, and that is what produced the first real backtrace.
   wrong way for negative values and gives a zero divisor once `n` reaches the
   width of an `int`. It is a shift.
 
+## Capability map
+
+Every row measured by a probe in `Scripts/probes/` that creates a device, clears
+to a known colour, presents, and has the capture scored per channel. Nothing
+here is inferred.
+
+| API | Word size | Result |
+|---|---|---|
+| D3D9 | 32-bit | works, shader model 3.0, colour correct |
+| D3D9 | 64-bit | works, shader model 3.0, colour correct |
+| D3D11 | 32-bit | works, feature level 11_0, colour correct |
+| D3D11 | 64-bit | works, feature level 11_0 of 11_1 available, colour correct |
+| D3D12 | 64-bit | works through DXMT, resource binding tier 2, colour correct |
+| OpenGL | 64-bit | 2.1 compatibility, 4.1 core if the app asks for a core profile |
+| Vulkan | 64-bit | works; the one colour fault seen is the app's own setup |
+
 ## Which graphics path to use
 
 Measured, not assumed. The probe clears to a known colour and the capture is
