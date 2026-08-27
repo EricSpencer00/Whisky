@@ -480,6 +480,24 @@ PLIST
   mkdir -p "$stage/Libraries/DXVK"
   cp -R "$OUT_DIR/DXVK"/* "$stage/Libraries/DXVK/"
 
+  # Fetch + overlay DXMT. The tarball is the whole runtime: extracting it is
+  # the only install step. Fetching DXMT at install time instead is how the
+  # bundle silently ended up on wined3d twice.
+  log "Fetching DXMT"
+  OUT_DIR="$OUT_DIR" WORK_DIR="$WORK_DIR" bash "$script_dir/fetch-dxmt.sh"
+  local wl="$stage/Libraries/Wine/lib/wine"
+  for n in d3d11 dxgi d3d10core d3d10 d3d10_1 nvapi64; do
+    [ -f "$OUT_DIR/DXMT/x86_64-windows/$n.dll" ] && \
+      cp "$OUT_DIR/DXMT/x86_64-windows/$n.dll" "$wl/x86_64-windows/$n.dll"
+    [ -f "$OUT_DIR/DXMT/i386-windows/$n.dll" ] && [ -d "$wl/i386-windows" ] && \
+      cp "$OUT_DIR/DXMT/i386-windows/$n.dll" "$wl/i386-windows/$n.dll"
+  done
+  cp "$OUT_DIR/DXMT/x86_64-unix/winemetal.so" "$wl/x86_64-unix/"
+
+  # win32u dlopens libvulkan.1.dylib by that name from this directory and
+  # searches nowhere else. Relative so the bundle survives being moved.
+  ln -sf ../../../../MoltenVK/libMoltenVK.dylib "$wl/x86_64-unix/libvulkan.1.dylib"
+
   # Ad-hoc codesign so the unsigned wine binaries don't get SIGKILL'd by
   # macOS hardened runtime at launch. Users who have a Developer ID should
   # re-sign with their own identity after download; ad-hoc is enough for
