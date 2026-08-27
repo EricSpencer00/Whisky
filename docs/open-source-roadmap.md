@@ -17,20 +17,32 @@ Several early conclusions were later disproved — each is corrected in place, b
 
 | Wrapper | Wine | D3D11 engine | Window visible? | UI renders? | Blocker |
 |---|---|---|---|---|---|
-| Whisky 2.3.5 | 8.0.1 | D3DMetal | ? | ✗ | D3DMetal `OpenSharedResource` hangs 120s |
-| Whisky 2.3.5 | 8.0.1 | DXVK (old) | ? | ✗ | Feature level reported as 9 → exit |
-| Sikarugir 1.0.11 | 8.0.1 | DXMT v0.74 | ✗ (1×29 "Detecting controllers") | — | Game crashes with SEH frame corruption before window transitions |
-| Sikarugir 1.0.11 | 8.0.1 | DXVK 1.10.3-async (bundled) | ✗ | — | Only ships d3d11+d3d10core, no dxgi; ABI incompatible with Wine 8.0.1 + winemetal |
-| Sikarugir 1.0.11 | 8.0.1 | DXVK 2.7.1 (swapped in) | — | ✗ | Requires Vulkan 1.3; platform can only produce 1.2 via MoltenVK |
+| Whisky 2.3.5 | ? [^w] | D3DMetal | ? | ✗ | D3DMetal `OpenSharedResource` hangs 120s |
+| Whisky 2.3.5 | ? [^w] | DXVK (old) | ? | ✗ | Feature level reported as 9 → exit |
+| Sikarugir 1.0.11 + WS11Wine10.0_3 | 10.0 | DXMT v0.74 | ✗ (1×29 "Detecting controllers") | — | Game crashes with SEH frame corruption before window transitions |
+| Sikarugir 1.0.11 + WS11Wine10.0_3 | 10.0 | DXVK 1.10.3-async (bundled) | ✗ | — | Only ships d3d11+d3d10core, no dxgi; ABI incompatible with Wine 10.0 + winemetal |
+| Sikarugir 1.0.11 + WS11Wine10.0_3 | 10.0 | DXVK 2.7.1 (swapped in) | — | ✗ | Requires Vulkan 1.3; platform can only produce 1.2 via MoltenVK |
 | CrossOver 26.1.0 | 11.0 | D3DMetal | ✓ (1280×748, proper title) | ✗ (black framebuffer) | Ultralight shared-texture handshake times out at ~100s |
 | CrossOver 26.1.0 | 11.0 | DXVK 2.7.1 | ✗ | — | `Skipping Vulkan 1.2 adapter: Apple M1 Max` — CrossOver's x86_64 MoltenVK caps at 1.2 |
 | CrossOver 26.1.0 | 11.0 | DXVK 2.3.1 (older) | ✗ | — | Still requires Vulkan 1.3 (started in 2.3 or earlier) |
+
+[^w]: The Sikarugir engine versions here were corrected on 2026-08-27 after
+      @Gcenx pointed out that Sikarugir selects an engine rather than bundling
+      Wine. The Whisky 2.3.5 figure said 8.0.1, but `docs/beamng-runbook.md`
+      says 7.7 (CrossOver 22.1.1) and nothing here supports either. That bundle
+      has since been replaced by this fork's own Wine 11 build, so it can no
+      longer be checked. Left unknown rather than guessed.
 
 ## The real architectural problems
 
 1. **CrossOver is sealed.** `/Applications/CrossOver.app` is signed and macOS won't let us `cp`/`mv` into it without turning off System Integrity Protection. We can't swap in newer MoltenVK. It's a dead end for modding.
 2. **CrossOver's bundled MoltenVK is x86_64-only and caps at Vulkan 1.2.** Even though MoltenVK 1.4.1 (Aug 2025) supports Vulkan 1.4 on M1 via `VK_KHR_buffer_device_address`, CrossOver ships an older build that doesn't expose 1.3.
-3. **Sikarugir's bundled Wine is 8.0.1.** That's 3 years old. Its bundled DXVK is 1.10.3-async from 2023, missing dxgi.dll. Its bundled DXMT v0.74 works enough to reach main loop but the SEH crash is flaky.
+3. **Sikarugir does not bundle Wine — you pick an Engine.** The wrapper and the
+   engine are separate downloads, and the newest engine is Wine 10.0
+   (`WS11Wine10.0_3`), not 8.0.1. The engine list also carries CrossOver-based
+   and Whisky-based builds. Our own tests ran on Wine 10.0. Its DXVK 1.10.3-async
+   is from 2023 and has no dxgi.dll; DXMT v0.74 reaches the main loop but the SEH
+   crash is flaky.
 4. **BeamNG's Ultralight UI uses D3D11 shared textures.** `IDXGIResource::GetSharedHandle` → `ID3D11Device::OpenSharedResource` handshake must complete for the menu to paint. It hangs on D3DMetal and currently isn't reached cleanly on DXMT because the game crashes first.
 5. **No open-source wrapper implements CrossOver's Hack 18311.** That's the patch in `dlls/wined3d/directx.c` that force-defaults to `wined3d_adapter_vk_create` on macOS, bypassing D3DMetal. It's publicly LGPL in CrossOver 26.1.0's source drop.
 6. **Wine's HID device enumeration refuses Mac USB devices.** Log: `err:hid:handle_DeviceMatchingCallback Ignoring HID device ... not a joystick or gamepad`. BeamNG waits on controller detection. Not a hard block, but it delays the window transition.
@@ -57,7 +69,7 @@ Components, all open source, all with clear provenance:
   - Invokes Wine with the target `.exe`
   - Registers as a proper `LSUIElement = NO` app so Wine windows become native `NSWindow`s
 
-Reference: `ericspencer00/Whisky` (this repo, fork of isaacmarovitz/Whisky) is a starting point. Its Swift wrapper code handles bottles, the GUI, and Wine invocation. What needs to change: bundled Wine 8.0.1 → 11.0+hack18311, bundled DXVK (none currently) → 2.7.1 full set, bundled MoltenVK → 1.4.1 universal.
+Reference: `ericspencer00/Whisky` (this repo, fork of isaacmarovitz/Whisky) is a starting point. Its Swift wrapper code handles bottles, the GUI, and Wine invocation. What needs to change: the bundled Wine → 11.0+hack18311, bundled DXVK (none currently) → 2.7.1 full set, bundled MoltenVK → 1.4.1 universal.
 
 ### Phase 2: reach playable for BeamNG
 
@@ -96,7 +108,7 @@ Once the MVP launches a D3D11 app to a visible window, iterate on the specific b
 - DXVK: `https://github.com/doitsujin/dxvk/releases`
 - MoltenVK: `https://github.com/KhronosGroup/MoltenVK/releases`
 - DXMT (reference): `https://github.com/3Shain/dxmt`
-- Sikarugir (for inspiration — not using its bundle directly): `https://github.com/Sikarugir-App/Sikarugir`
+- Sikarugir (for inspiration — not using its engines directly): `https://github.com/Sikarugir-App/Sikarugir`
 
 ## What's in this repo right now (from 2026-04-17 to 2026-04-18 sessions)
 
@@ -182,7 +194,8 @@ with a `d3dmetal` value is present in `win32u.so`), and setting it
 `=d3dmetal` changes nothing on its own.
 
 Read: GPTK 3.0's unixlib is built against the Wine unixlib ABI of its host
-(Sikarugir ships Wine 8.0.1), so on this Wine 11 build the PE half loads and
+(the Sikarugir engine we took it from is Wine 10.0), so on this Wine 11 build
+the PE half loads and
 silently falls back to wined3d instead of reaching Metal. Making D3DMetal
 work here needs a GPTK build matching this Wine's unixlib version — i.e.
 the D3DMetal shipped with the CrossOver whose Wine we build from (26.1.0),
@@ -260,7 +273,7 @@ Three things have to be right:
    falls through to wined3d — that is why the earlier "framework in
    `lib/external`, PE native in system32" attempt showed D3DMetal never mapped.
 2. **The same CrossOver whose LGPL source built this Wine.** Apple's GPTK 3.0
-   copy targets the Wine 8.0.1 unixlib ABI and aborts on
+   copy targets the Wine 10.0 unixlib ABI and aborts on
    `ntdll.dll.__wine_unix_call`.
 3. **The unixlibs are symlinks, not copies.** Every `.so` in
    `apple_gptk/wine/x86_64-unix/` is a 33-byte symlink to the single
