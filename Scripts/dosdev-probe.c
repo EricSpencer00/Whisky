@@ -1,85 +1,98 @@
-/* dosdev-probe.c — regression probe for the BOOLEAN-syscall-argument ABI bug.
- *
- * Wine's kernelbase GetLogicalDrives() and QueryDosDeviceW(NULL,...) both loop
- *
- *     while (!NtQueryDirectoryObject( h, info, sizeof(data), 1, 0, &ctx, &len ))
- *
- * over \DosDevices. The PE side is Microsoft-x64-ABI code and may write only
- * the low byte of the `restart` argument's stack slot; the unix side is
- * System-V code and tests the full 32-bit register. Stale garbage in the high
- * bits makes `restart` read TRUE, which pins the enumeration index at 0 and the
- * loop never terminates. See Scripts/patches/ntdll-boolean-syscall-arg-abi.patch
- * and docs/open-source-roadmap.md.
- *
- * A healthy build prints ctx advancing 0 -> 1 -> 2 ... and reaches "probe done".
- * A broken build either prints "ctx DID NOT ADVANCE" or hangs in
- * GetLogicalDrives(). Note the bug is stack-garbage dependent, so a single
- * clean run does not prove a build is fixed — the BeamNG A/B in the roadmap is
- * the load-bearing test.
- *
- * Build:  x86_64-w64-mingw32-gcc -O1 -o dosdev-probe.exe Scripts/dosdev-probe.c -lntdll
- */
 #include <windows.h>
 #include <winternl.h>
+#include <stdio.h>
+
 #ifndef OBJ_CASE_INSENSITIVE
 #define OBJ_CASE_INSENSITIVE 0x00000040L
 #endif
-#include <stdio.h>
+
+#define WATCHDOG_SECONDS 15
+#define DIRTY_BYTES      (256 * 1024)
+#define DIRTY_PATTERN    0xAA
 
 typedef struct { UNICODE_STRING ObjectName; UNICODE_STRING ObjectTypeName; } DIRBASIC;
+typedef NTSTATUS (WINAPI *open_dir_t)(HANDLE *, ACCESS_MASK, OBJECT_ATTRIBUTES *);
+typedef NTSTATUS (WINAPI *query_dir_t)(HANDLE, void *, ULONG, BOOLEAN, BOOLEAN, ULONG *, ULONG *);
+typedef void (WINAPI *init_us_t)(UNICODE_STRING *, const WCHAR *);
 
-typedef NTSTATUS (WINAPI *pNtOpenDirectoryObject_t)(HANDLE*, ACCESS_MASK, OBJECT_ATTRIBUTES*);
-typedef NTSTATUS (WINAPI *pNtQueryDirectoryObject_t)(HANDLE, void*, ULONG, BOOLEAN, BOOLEAN, ULONG*, ULONG*);
-typedef void (WINAPI *pRtlInitUnicodeString_t)(UNICODE_STRING*, const WCHAR*);
-
-static pNtQueryDirectoryObject_t pNtQueryDirectoryObject;
-
-int main(void)
+static DWORD WINAPI watchdog(void *unused)
 {
-    HMODULE nt = GetModuleHandleA("ntdll.dll");
-    pNtOpenDirectoryObject_t   pOpen = (void*)GetProcAddress(nt, "NtOpenDirectoryObject");
-    pRtlInitUnicodeString_t    pInit = (void*)GetProcAddress(nt, "RtlInitUnicodeString");
-    pNtQueryDirectoryObject = (void*)GetProcAddress(nt, "NtQueryDirectoryObject");
+    (void)unused;
+    Sleep(WATCHDOG_SECONDS * 1000);
+    printf("### HUNG: no progress in %d s\n", WATCHDOG_SECONDS);
+    fflush(stdout);
+    ExitProcess(2);
+    return 0;
+}
 
-    setvbuf(stdout, NULL, _IONBF, 0);
-    printf("### probe start\n");
+/* GetLogicalDrives passes `restart` as a BOOLEAN in a stack slot. A PE compiler
+ * that writes only the low byte leaves whatever was already there in the rest of
+ * it, so whether the bug fires depends on what the stack happened to hold. Fill
+ * that region first to make the outcome the same every run. */
+static void dirty_stack(void)
+{
+    volatile unsigned char buf[DIRTY_BYTES];
+    size_t i;
 
-    UNICODE_STRING us; OBJECT_ATTRIBUTES attr; HANDLE h = NULL;
-    pInit(&us, L"\\DosDevices");
-    InitializeObjectAttributes(&attr, &us, OBJ_CASE_INSENSITIVE, NULL, NULL);
-    NTSTATUS st = pOpen(&h, 0x0001 /*DIRECTORY_QUERY*/, &attr);
-    printf("### NtOpenDirectoryObject = 0x%08lx handle=%p\n", (unsigned long)st, h);
-    if (st) return 1;
+    for (i = 0; i < sizeof(buf); i++)
+        buf[i] = DIRTY_PATTERN;
+}
 
-    /* Exactly kernelbase's loop, but bounded and instrumented. */
+static int enumerate(void)
+{
+    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+    open_dir_t open_dir = (open_dir_t)GetProcAddress(ntdll, "NtOpenDirectoryObject");
+    query_dir_t query_dir = (query_dir_t)GetProcAddress(ntdll, "NtQueryDirectoryObject");
+    init_us_t init_us = (init_us_t)GetProcAddress(ntdll, "RtlInitUnicodeString");
+    OBJECT_ATTRIBUTES attr;
+    UNICODE_STRING name;
+    HANDLE dir = NULL;
+    NTSTATUS status;
     char data[1024];
     DIRBASIC *info = (DIRBASIC *)data;
     ULONG ctx = 0, len = 0;
     int i;
-    for (i = 0; i < 24; i++)
+
+    init_us(&name, L"\\DosDevices");
+    InitializeObjectAttributes(&attr, &name, OBJ_CASE_INSENSITIVE, NULL, NULL);
+    if ((status = open_dir(&dir, 0x0001, &attr)))
     {
-        ULONG ctx_before = ctx;
-        st = pNtQueryDirectoryObject(h, info, sizeof(data), 1, 0, &ctx, &len);
-        printf("### [%2d] status=0x%08lx ctx %lu -> %lu len=%lu name=\"%.*S\"\n",
-               i, (unsigned long)st, (unsigned long)ctx_before, (unsigned long)ctx,
-               (unsigned long)len,
-               st ? 0 : (int)(info->ObjectName.Length / sizeof(WCHAR)),
-               st ? L"" : info->ObjectName.Buffer);
-        if (st) break;
-        if (ctx == ctx_before) { printf("### ctx DID NOT ADVANCE -> this is the infinite loop\n"); break; }
+        printf("### NtOpenDirectoryObject failed 0x%08lx\n", (unsigned long)status);
+        return 1;
     }
 
-    /* Same thing with an explicit ULONG-sized restart arg forced to 0, to see
-     * whether the BOOLEAN stack argument is what is arriving wrong. */
-    printf("### now calling GetLogicalDrives() (hangs if the loop is unbounded)\n");
-    DWORD mask = GetLogicalDrives();
-    printf("### GetLogicalDrives() = 0x%08lx\n", (unsigned long)mask);
+    for (i = 0; i < 64; i++)
+    {
+        ULONG before = ctx;
 
-    printf("### now calling QueryDosDeviceW(NULL, buf, 65536)\n");
-    static WCHAR big[65536];
-    DWORD n = QueryDosDeviceW(NULL, big, 65536);
-    printf("### QueryDosDeviceW = %lu (err=%lu)\n", (unsigned long)n, (unsigned long)GetLastError());
+        if ((status = query_dir(dir, info, sizeof(data), TRUE, FALSE, &ctx, &len)))
+            break;
+        if (ctx == before)
+        {
+            printf("### FAIL: context stuck at %lu after entry \"%.*S\"\n",
+                   (unsigned long)ctx,
+                   (int)(info->ObjectName.Length / sizeof(WCHAR)), info->ObjectName.Buffer);
+            return 1;
+        }
+    }
+    return 0;
+}
 
-    printf("### probe done\n");
+int main(void)
+{
+    DWORD mask;
+
+    setvbuf(stdout, NULL, _IONBF, 0);
+    CreateThread(NULL, 0, watchdog, NULL, 0, NULL);
+
+    dirty_stack();
+    if (enumerate())
+        return 1;
+
+    dirty_stack();
+    mask = GetLogicalDrives();
+    printf("### GetLogicalDrives = 0x%08lx\n", (unsigned long)mask);
+
+    printf("### PASS\n");
     return 0;
 }
