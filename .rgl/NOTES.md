@@ -83,3 +83,44 @@ Artifact to fetch when green: `dxmt-<tag>.tar.gz`.
 2. Re-run LauncherPatcher.exe with DXMT active.
 3. If it hits another UNIMPLEMENTED, repeat. Grep candidates:
    `grep -n UNIMPLEMENTED src/d3d11/*.cpp`
+
+## Iteration 3-4: DXMT fix works, launcher still exits
+
+The `SwapDeviceContextState` fix is **confirmed good**. Built on the fork's CI
+(run 33040914946, all 14 jobs green), installed, and:
+- zero `SwapDeviceContextState` aborts
+- d3d11 probe still `featurelevel=0xb100`
+- launcher error changed `00000010` -> `FFFF7001`, so it now gets much further
+
+### Where it dies now
+
+`Launcher.exe` calls `TerminateProcess(self, 0xFFFF7001)` from `Launcher.exe+0x3f994d`.
+Its own code, deliberately, not a crash. Sequence from launcher.log:
+
+```
+:30.330 [subsystem] Initializing group 1...
+        <-- 7.4 second gap -->
+:37.770 [DxDia] [diag] DxDiag info:        <- captured as failure diagnostics
+        TerminateProcess(self, ffff7001)
+```
+
+RGL dumps DxDiag when it is about to report a failure, so DxDiag is a symptom.
+The 7.4s gap looks like a timeout, not a crash.
+
+### Ruled out this iteration
+- **Not wineserver.** "wineserver crashed" only appeared when I `pkill -9`'d it myself.
+- **Not dxdiag.exe.** Disabling it changes nothing; RGL uses the dxdiagn COM API.
+- **Not dxdiagn.** `WINEDLLOVERRIDES=dxdiagn=d` and `=n` both give the same FFFF7001.
+- **Not GetDpiAwarenessContextForProcess.** Our user32 exports it (that fix is for older Wine).
+- **Not the Windows version.** Prefix reports build 19043 (Win10). The
+  "Windows XP Professional" line is Wine's dxdiagn stub, and is stale text.
+- **Not DXMT.** With `DXMT_LOG_LEVEL=3` it logs only the device creation at
+  FL 10_0 and nothing else. No errors, no warnings.
+- **Not Social Club.** Never installs, but modern RGL only version-checks it.
+- **Not VC++ runtimes.** Installed, 8 msvc dlls in system32.
+
+### Next: A/B against CrossOver
+
+Same method that found the BeamNG BOOLEAN bug. CrossOver is allowed as a
+diagnostic reference. Install RGL into a CrossOver bottle; if it runs there,
+diff the two environments to find what group 1 is waiting on.
