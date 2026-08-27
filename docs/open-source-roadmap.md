@@ -410,3 +410,191 @@ processes alive** with no "Steamwebhelper is not responding". Steam's own UI
 does hit DXMT's `CreateSwapChain: cross-process swapchain not supported yet`
 (3Shain/dxmt#141), so use `steamcmd` for installing and updating games — it is
 a console app and needs no CEF at all.
+
+### 2026-08-26 (later still): the input-init hang is a BOOLEAN syscall-argument ABI bug — BeamNG reaches the main menu
+
+**BeamNG.drive 0.38.5 now boots to its main menu on the fully open-source stack**
+(from-source Wine 11 + DXMT 0.80, no CrossOver, no D3DMetal, no GPTK):
+
+```
+ 9.87508|D|engine::GFXD3D11WindowTarget::resetMode| setting video mode: Width 1280, Height 720, Windowed 1
+ 9.92234|D|sfx| Using default audio device: MacBook Pro Speakers
+10.57209|D|GELua.core_input_bindings.bindings| Loaded 294 bindings for device keyboard0
+10.57289|D|GELua.core_input_bindings.bindings| Loaded 20 bindings for device mouse0
+14.80158|D|GELua.core_gamestate.gamestate| show main menu (true)
+14.82867|D|GELua.core_gamestate.gamestate| ui finished loading
+15.59212|D|GELua.core_gamestate.gamestate| ui told us loading screen is now loaded
+```
+
+The full CEF process tree comes up too — gpu-process, network and storage
+services, two renderers.
+
+#### The bug
+
+It was never an input bug. `wineserver` sits at ~50% CPU servicing a flood of
+one request:
+
+```
+0024: get_directory_entries( handle=015c, index=00000000, max_count=00000001 )
+0024: get_directory_entries() = 0 { total_len=170, count=00000001,
+        entries={{name=L"HID#VID_845E&PID_0001#0&0000&0&0&0#{378de44c-...}",type=L"SymbolicLink"}} }
+```
+
+2,086,340 identical calls on one thread, same handle, `index` never leaving 0,
+nothing else interleaved. `index` is `restart ? 0 : *context` in
+`NtQueryDirectoryObject`, so `restart` is arriving TRUE when the caller passed
+FALSE.
+
+A filtered relay trace (`RelayInclude=ntdll.NtQueryDirectoryObject`) puts the
+caller at `kernelbase.dll+0x724a3` — the loop body of **`GetLogicalDrives`**,
+which is
+
+```c
+    char data[1024];
+    ULONG ctx = 0, len;
+    while (!NtQueryDirectoryObject( handle, info, sizeof(data), 1, 0, &ctx, &len ))
+```
+
+Our llvm-mingw PE build compiles that call site to
+
+```asm
+17407248f:  movb   $0x0,0x20(%rsp)   ; restart = FALSE — writes ONE byte
+17407249d:  mov    $0x1,%r9b         ; single_entry = TRUE — low byte of R9 only
+1740724a0:  call   *%r15             ; ret = +0x724a3
+```
+
+while the unix side compiles `restart ? 0 : *context` to
+
+```asm
+4b532: testl  %r8d, %r8d        ; restart — tests 32 bits
+4b535: jne    0x4b53a           ; nonzero -> index stays 0
+4b537: movl   (%r9), %r13d      ; else index = *context
+...
+4b59d: cmpb   $0x1, %bl         ; single_entry — correctly read as a byte
+```
+
+The PE side is Microsoft-x64-ABI code, where the high bits of a sub-word
+argument are **undefined**. The unix side is System-V code, where the caller is
+required to zero-extend them, so the compiler may test all 32 bits.
+`__wine_syscall_dispatcher` forwards the raw slot between the two, so the
+guarantee is lost and whatever stack garbage sat above the low byte reads as
+TRUE.
+
+CrossOver 26.1.0 is unaffected **only by luck** — its PE compiler emits the
+zero-extending forms at the same source line:
+
+| argument | CrossOver 26.1.0 | ours (llvm-mingw) |
+|---|---|---|
+| `single_entry` | `mov $0x1,%r9d` (32-bit) | `mov $0x1,%r9b` (8-bit) |
+| `restart` | `movl $0x0,0x20(%rsp)` (32-bit) | `movb $0x0,0x20(%rsp)` (8-bit) |
+
+That is the whole difference between "CrossOver runs this binary" and "our
+build hangs". Wine's own source is byte-identical between the two trees here —
+`dlls/kernelbase/volume.c`, `dlls/ntdll/unix/sync.c` and `server/directory.c`
+all diff clean against upstream wine-11.0.
+
+#### Why it looked like two separate input blockers
+
+The looping thread is inside `LoadLibrary("DInput8.dll")`, so it holds ntdll's
+loader lock while spinning. Every other thread then times out in
+`LdrResolveDelayLoadedAPI` on `loader_section`. The "dinput8 loader-lock
+deadlock" and the "second wait-for-worker spin after platform detection" are
+the same bug seen from two threads — and `WINEDLLOVERRIDES="dinput8="` only
+appeared to help because it skipped the call site.
+
+It also explains why the bug looked like a race: `+relay` "fixed" it because
+relay changes what garbage is sitting in that stack slot, not because of timing.
+
+#### Verification
+
+A 3-byte binary patch to the shipped `x86_64-unix/ntdll.so`, `45 85 c0`
+(`testl %r8d,%r8d`) → `45 84 c0` (`testb %r8b,%r8b`) at `NtQueryDirectoryObject+0x22`,
+is the whole fix. A/B over N=5 launches per arm, metric "reaches `show main
+menu` within 55 s":
+
+| arm | reaches `show main menu` | wineserver CPU at 55 s |
+|---|---|---|
+| unpatched (`testl`) | **0 / 5** | 48.3–57.9 % |
+| patched (`testb`)   | **5 / 5** | ~2.7 % |
+
+`DirectInput device enumeration finished after 0.019s` in every run of both arms:
+once the prefix had saved input bindings from the first successful launch, the
+hang moved to a *later* `GetLogicalDrives` call rather than the one during
+`DInput8.dll` load. Same bug, same fix, different symptom — which is why
+"reaches the main menu" is the metric rather than "gets past DirectInput".
+
+One patched run (3/5) reached the menu normally and then crashed ~11 s later on
+a CEF `ThreadPoolForegroundWorker` thread. That is a separate, downstream
+problem and is the next thing to chase; it is not a regression of this fix.
+
+The bug is stack-garbage dependent, so it is stochastic — a single passing run
+proves nothing, which is why this is measured over repeated launches. The first
+control run reached the input bindings and then hung slightly later, at a
+different `GetLogicalDrives` call, with `wineserver` back at 49.4%.
+
+#### The fix in the tree
+
+`Scripts/patches/ntdll-boolean-syscall-arg-abi.patch` reads the two BOOLEAN
+arguments a byte at a time:
+
+```c
+static inline int syscall_bool_arg( BOOLEAN value )
+{
+    return *(volatile unsigned char *)&value != 0;
+}
+```
+
+which clang compiles to `movb`/`cmpb` instead of `testl`. `build-wine.sh`
+applies it next to Hack 18311.
+
+`Scripts/dosdev-probe.c` is a standalone reproducer that enumerates
+`\DosDevices` and prints whether `ctx` advances.
+
+#### Not fixed: 39 other syscalls have the same hazard
+
+40 syscall entry points take a sub-word (`BOOLEAN`/`UCHAR`) argument and are
+subject to the identical failure — among them `NtWaitForSingleObject`,
+`NtDelayExecution` and `NtSignalAndWaitForSingleObject` (`alertable`),
+`NtQueryDirectoryFile` (`single_entry`, `restart_scan`), `NtCreateEvent`
+(`state`), `NtCreateMutant` (`owned`), `NtCreateThread` (`suspended`),
+`NtLockFile` (`dont_wait`, `exclusive`). The patch here fixes only the one
+proven to hang BeamNG. The general fix belongs in `__wine_syscall_dispatcher`,
+which today forwards raw argument slots and has no per-argument type
+information — that is the upstreamable piece of work and is not yet done.
+
+#### Correction to the previous section's "next step"
+
+"A 64-bit-only rebuild is the first bisection step" was wrong on its premise:
+CrossOver 26.1.0 ships `lib/wine/{i386-windows,x86_64-unix,x86_64-windows}` —
+the same layout our phase1l bundle has — so the working reference is also a
+WoW64 build and WoW64 was never the differentiator. The dispatched bisection
+run (33024070675) also failed for an unrelated reason: `build-wine.sh`'s
+post-build sanity check unconditionally required `lib/wine/i386-windows`, which
+a `WINE_ARCHS=x86_64` build legitimately does not produce. That check is now
+conditional on `WINE_ARCHS` containing `i386`.
+
+The earlier IOHID/`CFHash` lead was also a red herring: the busy thread in
+`winedevice.exe` is normal winebus HID polling and is present in CrossOver's
+`winedevice.exe` too.
+
+#### Ultralight/CEF UI paints — DXMT #141 does not bite BeamNG
+
+Visual confirmation on the free stack: the window titles itself
+`BeamNG.drive - 0.38.5.0.19602 - RELEASE - Direct3D11`, the 3D scene renders,
+and the first-run "Enable Online features?" onboarding **UI paints over it**.
+
+That settles the question this document has carried since April. BeamNG's
+Ultralight UI does *not* hit DXMT's cross-process swapchain limit
+(`src/d3d11/d3d11_swapchain.cpp:1094-1099`, 3Shain/dxmt#141), and it does not
+hit the April D3DMetal `OpenSharedResource` timeout either. The single
+crowd-sourced "EXCELLENT on M2" report was right; no work is needed on #141 for
+this game.
+
+Remaining known issues, in order:
+
+1. A CEF `ThreadPoolForegroundWorker` crash ~11 s after the menu loads, in 1 of
+   5 runs. Next thing to chase.
+2. The other 39 sub-word syscall arguments (see above) — latent, and the
+   general dispatcher fix is unwritten.
+3. No gameplay/frame-rate measurement yet. Reaching the main menu is not the
+   same as driving a car.

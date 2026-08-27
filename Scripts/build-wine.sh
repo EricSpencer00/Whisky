@@ -233,6 +233,23 @@ patch_source() {
   else
     log "WARN: Hack 18311 patch or wined3d directx.c not found — skipping"
   fi
+
+  # BOOLEAN syscall arguments: the PE side (MS x64 ABI) may write only the low
+  # byte of a sub-word argument, while the unix side (System V) is compiled
+  # assuming the caller zero-extended it. Stale garbage in the high bits then
+  # reads as TRUE. This hangs BeamNG.drive in GetLogicalDrives(). See
+  # docs/open-source-roadmap.md.
+  local boolabi="$script_dir/patches/ntdll-boolean-syscall-arg-abi.patch"
+  if [ -f "$boolabi" ] && [ -f "$wine_src/dlls/ntdll/unix/sync.c" ]; then
+    log "Applying BOOLEAN syscall-argument ABI fix (ntdll/unix/sync.c)"
+    if ( cd "$wine_src" && patch -p1 --forward --silent < "$boolabi" ); then
+      :
+    else
+      log "WARN: BOOLEAN syscall-arg patch returned non-zero — may already be applied"
+    fi
+  else
+    log "WARN: BOOLEAN syscall-arg patch or ntdll/unix/sync.c not found — skipping"
+  fi
 }
 
 # ---- configure + build wine ----
@@ -382,7 +399,11 @@ build_wine() {
     log "ERROR: $prefix/lib/wine/x86_64-unix backend missing — broken build"
     exit 1
   fi
-  if [ ! -d "$prefix/lib/wine/i386-windows" ]; then
+  case ",$WINE_ARCHS," in
+    *,i386,*) _need_i386=1 ;;
+    *)        _need_i386=0 ;;
+  esac
+  if [ "$_need_i386" = 1 ] && [ ! -d "$prefix/lib/wine/i386-windows" ]; then
     log "ERROR: $prefix/lib/wine/i386-windows missing — WoW64 build failed"
     exit 1
   fi
