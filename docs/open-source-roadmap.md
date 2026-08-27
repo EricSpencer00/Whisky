@@ -598,3 +598,81 @@ Remaining known issues, in order:
    general dispatcher fix is unwritten.
 3. No gameplay/frame-rate measurement yet. Reaching the main menu is not the
    same as driving a car.
+
+### 2026-08-26 (final): playable — 120 FPS, driving a truck at 137 km/h
+
+With the BOOLEAN-argument fix in place, BeamNG.drive 0.38.5 is not merely
+booting, it is **playable** on Wine 11 + DXMT with no CrossOver, no D3DMetal and
+no GPTK.
+
+Launched headless straight into a level:
+
+```
+wine64 BeamNG.drive.x64.exe -level gridmap_v2 -vehicle pickup \
+       -onLevelLoad_ext util/fpslog
+```
+
+```
+30.29754|D|libbeamng.default.init| spawning vehicle /vehicles/pickup/
+31.09699|D|libbeamng.loader| Vehicle loading took: 19.902699999999 ms
+31.65699|D|GELua.util_richPresence| Playing Freeroam on Gridmap V2 with Gavril D-Series
+33.33724|I|GELua.levelLoading| Level loaded in 19.258s
+```
+
+Applying throttle from Lua and reading the vehicle's velocity back:
+
+| t | speed | FPS |
+|---|---|---|
+| 15 s | 33.8 km/h | 127.9 |
+| 22 s | 91.6 km/h | — |
+| 25 s | 109.5 km/h | 117.0 |
+| 34 s | 137.1 km/h | — |
+| 45 s | 157.3 km/h | 120.2 |
+
+Steady **108–128 FPS at 1280×720**, worst frame 8–14 ms, on an M1 Max under
+Rosetta. The speed profile reproduces exactly across runs (91.6 then 137.1 km/h
+at the same timestamps), so the soft-body physics, drivetrain, input pipeline
+and renderer are all working.
+
+An in-engine `screenshot.doScreenshot()` capture — i.e. the actual D3D11
+backbuffer, not a desktop grab — shows the truck on Gridmap V2 with the
+**Ultralight/CEF speedometer HUD compositing over the 3D scene**: 86 mph, gear
+D, ~4000 RPM, ABS and park indicators. 86 mph is 138 km/h, matching the logged
+137.1 km/h. The HTML-over-D3D11 overlay path therefore works end to end.
+
+Notes on method:
+
+- The measurement extension (`fpslog`) was a temporary instrument, installed as
+  a new file and removed afterwards. It changed no game behaviour. The game
+  binary is unmodified (`md5 9051b73fbcc0df596ac96c38dc1744e1`, the `e8` call at
+  `0xBD9240` — the `c3` variant in `.foss-broken-bak-*` is the old hand-patch and
+  is NOT in use).
+- Two workaround mods left in the bottle by earlier sessions
+  (`mods/unpacked/{autoLevel,autostart}`) were **not** responsible for any of
+  this: they were mounted but never executed in any run (no
+  `passive CEF-kill suppressor loaded`, no `AUTO-LOADING LEVEL`). A control with
+  `startup.lua` and `mods/unpacked` moved aside still reached the main menu 3/3.
+- Headless runs need `onlineFeatures` and `telemetry` set in
+  `settings/settings.json`, otherwise the first-run "Enable Online features?"
+  modal sits over the scene waiting for a click. Setting them via `-lua` at
+  parse time is too early to stick; write them into the JSON.
+- `-level <name>` and `-vehicle <name>` work and skip the menu entirely.
+  `-onLevelLoad_ext` resolves the extension at ~3 s, *before* user mods are
+  mounted at ~9 s, so an extension shipped as a mod is not found — it has to be
+  on the game's own Lua path.
+- The window lands on a Space `screencapture` does not reach on a two-display
+  setup; use the in-engine screenshot instead.
+
+#### Cosmetic defect found
+
+`engine::BeamNGVehicle::updateHTMLTextures| Frame not rendered:
+VehicleTex-@licenseplate-default{,-specular,-normal}` — the license-plate
+render-to-texture never produces a frame (`rendered=0 requested=11`). Plates
+render blank. This is a separate HTML-to-texture path from the HUD overlay,
+which does work. Cosmetic, low priority.
+
+#### On the CEF crash
+
+The `ThreadPoolForegroundWorker` crash seen once in the earlier 5-run A/B did
+**not** recur in any of the six level-loading runs here. It is intermittent and
+appears tied to sitting on the main menu rather than to gameplay.
