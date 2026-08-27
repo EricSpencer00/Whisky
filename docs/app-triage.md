@@ -159,6 +159,16 @@ device through a private interface that only Wine's own DXGI answers, and DXMT's
 adapter returns `E_NOINTERFACE` for it. So installing DXMT for D3D11 silently
 removes D3D12 unless DXMT's own d3d12 goes in with it.
 
-Upstream builds DXMT's d3d12 only in the debug configuration. The fork builds it
-in release, because otherwise the bundle has no D3D12 path at all. It is still
-the experimental part of DXMT — a device and a tier are not a running game.
+`d3d12clear.exe` goes further: swapchain, command allocator, command list,
+barrier, `ClearRenderTargetView`, `Present`. On DXMT's d3d12 every call returns
+`S_OK` and the window measures r=230 g=111 b=28 against the requested
+(0.95, 0.45, 0.1). So D3D12 draws, at tier 2, with correct colour.
+
+That corrects an earlier reading of this stack. D3D12 was written off here on
+the grounds that MoltenVK caps samplers at 1024 against vkd3d-proton's
+requirement. That is true of the vkd3d route and irrelevant to DXMT's, which
+goes to Metal directly. What was actually stopping D3D12 was DXMT's dxgi.dll
+removing Wine's, with DXMT's own d3d12 not built in release.
+
+Upstream builds DXMT's d3d12 only in the debug configuration; the fork builds it
+in release. It remains the experimental part of DXMT, and a clear is not a game.
