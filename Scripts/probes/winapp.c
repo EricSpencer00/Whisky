@@ -1,13 +1,15 @@
 #include <windows.h>
 #include <stdio.h>
+#include <string.h>
 static LRESULT CALLBACK wp(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_DESTROY) { PostQuitMessage(0); return 0; }
     return DefWindowProcA(h, m, w, l);
 }
-int main(void) {
+int main(int argc, char **argv) {
+    int nopaint = argc > 1 && !strcmp(argv[1], "nopaint");
     WNDCLASSA c = {0};
     c.lpfnWndProc = wp; c.hInstance = GetModuleHandleA(NULL);
-    c.lpszClassName = "ProbeWin"; c.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    c.lpszClassName = "ProbeWin"; c.hbrBackground = NULL;
     RegisterClassA(&c);
     HWND h = CreateWindowExA(0, "ProbeWin", "GDI Probe", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                              100, 100, 400, 300, NULL, NULL, c.hInstance, NULL);
@@ -20,7 +22,7 @@ int main(void) {
             if (msg.message == WM_QUIT) return 0;
             TranslateMessage(&msg); DispatchMessageA(&msg);
         }
-        if (!painted && GetTickCount() - start > 3000) {
+        if (!nopaint && !painted && GetTickCount() - start > 3000) {
             HDC dc = GetDC(h); RECT r; GetClientRect(h, &r);
             HBRUSH b = CreateSolidBrush(RGB(0, 0, 255));
             printf("in-process FillRect=%d\n", FillRect(dc, &r, b)); fflush(stdout);

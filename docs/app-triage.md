@@ -87,7 +87,8 @@ from a prefix problem, and that is what produced the first real backtrace.
 | Steam | D3D11 + CEF | renders, store and library usable |
 | Cave Story | DirectDraw | renders |
 | OpenTTD 14.1 | OpenGL | renders |
-| Unigine Heaven | D3D11 | runs, needs its own launcher for arguments |
+| Unigine Heaven | D3D11 via DXMT | renders correctly, 3–19 FPS depending on the view |
+| SuperTuxKart 1.5 | OpenGL | runs, but sees OpenGL 2.1 and drops to reduced graphics |
 | Rockstar Games Launcher | D3D11 + CEF | initialises fully, UI window stays unpainted |
 | GZDoom (Vulkan) | Vulkan on MoltenVK | renders and animates; red and blue are pinned at 255 |
 | GZDoom (OpenGL) | OpenGL | cannot run, see below |
@@ -114,10 +115,23 @@ scored per channel.
 - **D3D11 through wined3d** does not work at all —
   `None of the requested D3D feature levels is supported`. So "wined3d is
   broken" is too coarse: it is broken for D3D11 here, not for D3D9.
-- **OpenGL above 4.1 cannot work.** macOS tops out at 4.1 and has no
+- **OpenGL is 2.1 unless the game asks for a core profile.** Wine reports
+  `GL version 2.1` and `Core context GL version: 4.1`. SuperTuxKart takes the
+  compatibility context, sees 2.1, and warns that the driver is very old.
+- **OpenGL above 4.1 cannot work at all.** macOS has no
   `ARB_direct_state_access`. GZDoom asks for the 4.5 DSA entry points, every
   `glVertexArray*` lookup returns null, and it calls one. Games in this
   position need a Vulkan or D3D renderer; there is nothing to fix in Wine.
+
+## Heaven is slow, and tessellation is not why
+
+Heaven renders correctly through DXMT and runs at 3 FPS in the town and 18 FPS
+facing the sky. Tessellation is the obvious suspect and it is wrong: the same
+camera gives 18 FPS with `TESSELLATION_DISABLED` and 19 with
+`TESSELLATION_NORMAL`, which is noise. DXMT does clamp Heaven's tessellation
+factor from 15 to 8 for the mesh pipeline, fifteen times at startup, but that
+costs nothing per frame. Whatever the cost is, it is elsewhere, and the next
+person should not spend the evening on tessellation.
 - **Vulkan straight to MoltenVK** works but is where the one colour bug is, and
   D3D9 reaching the same MoltenVK with correct colours says the fault is in how
   GZDoom sets up its swapchain, not in MoltenVK.
