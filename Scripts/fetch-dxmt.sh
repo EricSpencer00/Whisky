@@ -9,8 +9,14 @@
 # create, and the geometry-shader path is missing. It is LGPL-2.1-or-later, so
 # it ships inside the bundle.
 #
-# DXMT_URL points at a fork build while the SwapDeviceContextState fix is
-# unreleased upstream. Set it back to 3Shain/dxmt once that lands.
+# The fixes this stack needs are not in an upstream release yet, so point the
+# script at a build that has them:
+#
+#   DXMT_TARBALL=/path/to/dxmt-builtin.tar.gz ./Scripts/fetch-dxmt.sh
+#   DXMT_RUN_ID=<fork CI run> ./Scripts/fetch-dxmt.sh
+#
+# With neither, it takes the upstream release, and the Rockstar launcher and
+# anything else presenting cross-process will not draw.
 
 set -euo pipefail
 
@@ -22,11 +28,26 @@ WORK_DIR="${WORK_DIR:-$(pwd)/build/wine-build}"
 log() { printf '[dxmt] %s\n' "$*" >&2; }
 
 mkdir -p "$WORK_DIR" "$OUT_DIR/DXMT"
-tarball="$WORK_DIR/dxmt-${DXMT_VERSION}-builtin.tar.gz"
-if [ ! -f "$tarball" ]; then
-  log "Downloading DXMT ${DXMT_VERSION}"
-  curl -fL --retry 3 --max-time 300 -o "$tarball.part" "$DXMT_URL"
-  mv "$tarball.part" "$tarball"
+tarball="${DXMT_TARBALL:-}"
+if [ -n "$tarball" ]; then
+  log "Using $tarball"
+elif [ -n "${DXMT_RUN_ID:-}" ]; then
+  tarball="$WORK_DIR/dxmt-run-${DXMT_RUN_ID}.tar.gz"
+  if [ ! -f "$tarball" ]; then
+    log "Downloading artifact from fork run $DXMT_RUN_ID"
+    dl=$(mktemp -d)
+    gh run download "$DXMT_RUN_ID" --repo EricSpencer00/dxmt --dir "$dl"
+    found=$(find "$dl" -name '*builtin*.tar.gz' | head -1)
+    [ -n "$found" ] || { log "ERROR: no builtin tarball in run $DXMT_RUN_ID"; exit 1; }
+    cp "$found" "$tarball"
+  fi
+else
+  tarball="$WORK_DIR/dxmt-${DXMT_VERSION}-builtin.tar.gz"
+  if [ ! -f "$tarball" ]; then
+    log "Downloading DXMT ${DXMT_VERSION} (upstream; without the fork fixes)"
+    curl -fL --retry 3 --max-time 300 -o "$tarball.part" "$DXMT_URL"
+    mv "$tarball.part" "$tarball"
+  fi
 fi
 
 extract="$WORK_DIR/dxmt-extract"
