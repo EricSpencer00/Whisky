@@ -199,7 +199,33 @@ the PE half loads and
 silently falls back to wined3d instead of reaching Metal. Making D3DMetal
 work here needs a GPTK build matching this Wine's unixlib version — i.e.
 the D3DMetal shipped with the CrossOver whose Wine we build from (26.1.0),
-not the Sikarugir/GPTK-3.0 copy. That is the next thing to try.
+not the Sikarugir/GPTK-3.0 copy.
+
+**Tried, and it works (2026-08-27).** CrossOver 26.1's
+`lib64/apple_gptk` carries the matching pair: six PE stubs
+(`d3d11 d3d12 dxgi atidxx64 nvapi64 nvngx`) and one `libd3dshared.dylib`
+that all six `.so` names symlink to. Dropped into a clone of this Wine
+tree — `lib/apple_gptk/external/` for the dylib and the framework beside
+it, because `libd3dshared.dylib` has `LC_RPATH = @loader_path` and
+dlopens `@rpath/D3DMetal.framework/D3DMetal` — D3D11 comes up on
+D3DMetal instead of falling back:
+
+| | D3DMetal (CX 26.1) | DXMT |
+|---|---|---|
+| adapter | `AMD Compatibility Mode` | `Apple M1 Max` |
+| vendor / device | `1002` / `66af` | `106b` / `0000` |
+| reported VRAM | 53084 MB | 26542 MB |
+| feature level | 11_0 | 11_0 (max 11_1) |
+| RGBA8 format bits | `ffffffff` | `02fef3f3` |
+
+The adapter name is the proof: D3DMetal reports an AMD vendor ID because
+games gate on it. Note it also claims 53 GB of VRAM and answers every
+format query with `ffffffff`, so its caps are not ground truth and any
+game that picks presets from vendor or VRAM will not see the same machine
+on both backends.
+
+This stays a measurement reference. D3DMetal is Apple's, redistributed in
+a paid product; it cannot ship here.
 
 Net: all three FOSS-ish D3D11 backends are now characterized on Wine 11 —
 DXVK blocked by geometry shaders, wined3d-vulkan caps at FL9, D3DMetal 3.0
