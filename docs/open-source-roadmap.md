@@ -44,7 +44,16 @@ Several early conclusions were later disproved — each is corrected in place, b
    is from 2023 and has no dxgi.dll; DXMT v0.74 reaches the main loop but the SEH
    crash is flaky.
 4. **BeamNG's Ultralight UI uses D3D11 shared textures.** `IDXGIResource::GetSharedHandle` → `ID3D11Device::OpenSharedResource` handshake must complete for the menu to paint. It hangs on D3DMetal and currently isn't reached cleanly on DXMT because the game crashes first.
-5. **No open-source wrapper implements CrossOver's Hack 18311.** That's the patch in `dlls/wined3d/directx.c` that force-defaults to `wined3d_adapter_vk_create` on macOS, bypassing D3DMetal. It's publicly LGPL in CrossOver 26.1.0's source drop.
+5. **No open-source wrapper implements CrossOver's Hack 18311** — but we do not
+   have to add it. It is the code in `dlls/wined3d/directx.c` that defaults to
+   `wined3d_adapter_vk_create` on macOS, bypassing D3DMetal, and CodeWeavers
+   ships it in their own LGPL source drop: `CW HACK 18311` is at
+   `dlls/wined3d/directx.c:3531` in crossover-sources-26.1.0, and that file's
+   mtime is still the March release date after a full build, while the files we
+   really patch (`ntdll/unix/sync.c`, `winemac.drv/d3dmetal.c`) carry build-day
+   mtimes. Our copy of the patch was extracted against upstream wine-11.0 and
+   has never applied. It is kept only so `apply_patch` fails loudly if
+   CodeWeavers ever drops the hack.
 6. **Wine's HID device enumeration refuses Mac USB devices.** Log: `err:hid:handle_DeviceMatchingCallback Ignoring HID device ... not a joystick or gamepad`. BeamNG waits on controller detection. Not a hard block, but it delays the window transition.
 
 ## Path forward — build what doesn't exist yet
@@ -56,7 +65,7 @@ Goal: a `.app` bundle that can launch a Windows `.exe` on M1 macOS 26 and get vi
 Components, all open source, all with clear provenance:
 
 - **Wine 11.0** — WineHQ upstream, https://gitlab.winehq.org/wine/wine
-  - Patch with Hack 18311 from CrossOver 26.1.0 LGPL source drop (`dlls/wined3d/directx.c`)
+  - Hack 18311 needs no patch: CrossOver's own source already carries it
   - Patch with Mac HID device enumeration fix if present upstream
 - **MoltenVK 1.4.1** — Khronos, https://github.com/KhronosGroup/MoltenVK/releases/v1.4.1
   - Universal binary (x86_64 + arm64) — usable by x86_64 Wine and native arm64 tooling
