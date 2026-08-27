@@ -142,3 +142,23 @@ person should not spend the evening on tessellation.
 - **Vulkan straight to MoltenVK** works but is where the one colour bug is, and
   D3D9 reaching the same MoltenVK with correct colours says the fault is in how
   GZDoom sets up its swapchain, not in MoltenVK.
+
+## D3D12
+
+Measured with `Scripts/probes/d3d12probe.exe`, which creates a device and reports
+the resource binding tier.
+
+| dxgi.dll | d3d12.dll | Result |
+|---|---|---|
+| DXMT | Wine (vkd3d) | `D3D12CreateDevice` returns `E_NOINTERFACE`; no D3D12 at all |
+| Wine | Wine (vkd3d) | device created, **resource binding tier 1** |
+| DXMT | DXMT | device created, **resource binding tier 2** |
+
+Replacing `dxgi.dll` is what breaks Wine's D3D12: vkd3d reaches the Vulkan
+device through a private interface that only Wine's own DXGI answers, and DXMT's
+adapter returns `E_NOINTERFACE` for it. So installing DXMT for D3D11 silently
+removes D3D12 unless DXMT's own d3d12 goes in with it.
+
+Upstream builds DXMT's d3d12 only in the debug configuration. The fork builds it
+in release, because otherwise the bundle has no D3D12 path at all. It is still
+the experimental part of DXMT — a device and a tier are not a running game.
