@@ -65,10 +65,12 @@ jobs:
           fail=0
           for p in Scripts/patches/*.patch; do
             echo "--- $p"
-            if ( cd "$src" && patch -p1 --dry-run --force < "$GITHUB_WORKSPACE/$p" ); then
+            if ( cd "$src" && patch -p1 --dry-run --silent --force -R < "$GITHUB_WORKSPACE/$p" ) >/dev/null 2>&1; then
+              echo "    already present in this tree"
+            elif ( cd "$src" && patch -p1 --dry-run --force < "$GITHUB_WORKSPACE/$p" ); then
               echo "    applies"
             else
-              echo "::error file=$p::does not apply to CrossOver ${CROSSOVER_VERSION}"
+              echo "::error file=$p::does not apply to CrossOver ${CROSSOVER_VERSION} and is not already present"
               fail=1
             fi
           done
@@ -83,7 +85,7 @@ jobs:
           src=/tmp/tree/sources/wine
           [ -d "$src" ] || src=$(find /tmp/tree -maxdepth 3 -type d -name wine | head -1)
           cd "$src"
-          patch -p1 --force < "$GITHUB_WORKSPACE/Scripts/patches/ntdll-boolean-syscall-arg-abi.patch"
+          patch -p1 --force --forward < "$GITHUB_WORKSPACE/Scripts/patches/ntdll-boolean-syscall-arg-abi.patch"
           gcc -fsyntax-only -xc - <<'EOF'
           typedef unsigned char BOOLEAN;
           static inline int syscall_bool_arg( BOOLEAN value )

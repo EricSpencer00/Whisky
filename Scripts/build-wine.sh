@@ -215,6 +215,29 @@ fetch_source() {
 # cocoa_window.m:985 (CW HACK 22435). On aarch64 this breaks the build with
 # "use of undeclared identifier 'WineMetalLayer'". Drop the guard — the class
 # is a trivial CAMetalLayer subclass and builds fine on aarch64.
+# Applies a patch, distinguishing "already present in this tree" from "rotted".
+# A patch that no longer applies used to be a WARN, so a silently skipped patch
+# looked identical to a successful one. Hack 18311 had been failing on every
+# single build for exactly this reason: it was extracted against upstream
+# wine-11.0, and CrossOver's own tree already contains CodeWeavers' own hack.
+apply_patch() {
+  local patch_file="$1" wine_src="$2" name="$3"
+  if [ ! -f "$patch_file" ]; then
+    log "ERROR: $name patch missing at $patch_file"
+    exit 1
+  fi
+  if ( cd "$wine_src" && patch -p1 --dry-run --silent --force -R < "$patch_file" ) >/dev/null 2>&1; then
+    log "$name already present in this tree — skipping"
+    return
+  fi
+  if ( cd "$wine_src" && patch -p1 --silent --force < "$patch_file" ); then
+    log "$name applied"
+    return
+  fi
+  log "ERROR: $name does not apply and is not already present — the source tree moved"
+  exit 1
+}
+
 patch_source() {
   local d="$WORK_DIR/src/wine/dlls/winemac.drv"
   for f in "$d/d3dmetal_objc.h" "$d/d3dmetal_objc.m" "$d/d3dmetal.c"; do
@@ -234,16 +257,7 @@ patch_source() {
   local hack18311="$script_dir/patches/hack-18311-wined3d-vulkan-default.patch"
   local wine_src="$WORK_DIR/src/wine"
   [ -d "$wine_src" ] || wine_src="$WORK_DIR/src/sources/wine"
-  if [ -f "$hack18311" ] && [ -f "$wine_src/dlls/wined3d/directx.c" ]; then
-    log "Applying Hack 18311 (wined3d-vulkan default on macOS)"
-    if ( cd "$wine_src" && patch -p1 --forward --silent < "$hack18311" ); then
-      :
-    else
-      log "WARN: Hack 18311 patch returned non-zero — may already be applied"
-    fi
-  else
-    log "WARN: Hack 18311 patch or wined3d directx.c not found — skipping"
-  fi
+  apply_patch "$hack18311" "$wine_src" "Hack 18311 (wined3d-vulkan default on macOS)"
 
   # BOOLEAN syscall arguments: the PE side (MS x64 ABI) may write only the low
   # byte of a sub-word argument, while the unix side (System V) is compiled
@@ -251,16 +265,12 @@ patch_source() {
   # reads as TRUE. This hangs BeamNG.drive in GetLogicalDrives(). See
   # docs/open-source-roadmap.md.
   local boolabi="$script_dir/patches/ntdll-boolean-syscall-arg-abi.patch"
-  if [ -f "$boolabi" ] && [ -f "$wine_src/dlls/ntdll/unix/sync.c" ]; then
-    log "Applying BOOLEAN syscall-argument ABI fix (ntdll/unix/sync.c)"
-    if ( cd "$wine_src" && patch -p1 --forward --silent < "$boolabi" ); then
-      :
-    else
-      log "WARN: BOOLEAN syscall-arg patch returned non-zero — may already be applied"
-    fi
-  else
-    log "WARN: BOOLEAN syscall-arg patch or ntdll/unix/sync.c not found — skipping"
-  fi
+  apply_patch "$boolabi" "$wine_src" "BOOLEAN syscall-argument ABI fix"
+
+  grep -q 'syscall_bool_arg( restart )' "$wine_src/dlls/ntdll/unix/sync.c" || {
+    log "ERROR: syscall_bool_arg missing from sync.c after patching"
+    exit 1
+  }
 }
 
 # ---- configure + build wine ----
