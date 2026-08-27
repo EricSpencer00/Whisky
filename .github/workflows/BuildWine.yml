@@ -22,6 +22,10 @@ on:
         description: "Release tag to upload to (e.g. wine-v26.1.0)"
         required: true
         default: "wine-v26.1.0"
+      wine_archs:
+        description: "Wine --enable-archs (i386,x86_64 = WoW64; x86_64 = 64-bit only)"
+        required: false
+        default: "i386,x86_64"
   push:
     tags:
       - "wine-v*"
@@ -35,6 +39,7 @@ env:
   # honours the workflow_dispatch input override; the rest are tracked here
   # only so cache keys invalidate when we bump them in the scripts.
   CROSSOVER_VERSION: ${{ github.event.inputs.crossover_version || '26.1.0' }}
+  WINE_ARCHS: ${{ github.event.inputs.wine_archs || 'i386,x86_64' }}
   LLVM_MINGW_VERSION: "20260407"
   MOLTENVK_VERSION: "1.4.1"
   DXVK_VERSION: "2.7.1"
@@ -59,6 +64,20 @@ jobs:
             build/wine-build/MoltenVK-macos-*.tar
             build/wine-build/dxvk-*.tar.gz
           key: wine-sources-${{ env.CROSSOVER_VERSION }}-${{ env.LLVM_MINGW_VERSION }}-${{ env.MOLTENVK_VERSION }}-${{ env.DXVK_VERSION }}
+
+      - name: Cache Homebrew downloads
+        # The x86_64 brew install at /usr/local pulls its bottles cold every
+        # run. Caching the download dir only (not the installed prefix) keeps
+        # the step honest — brew still decides what to install — while cutting
+        # the network time out of it.
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew/downloads
+            /usr/local/Homebrew/Library/Taps
+          key: brew-x86_64-${{ runner.os }}-${{ hashFiles('.github/workflows/BuildWine.yml') }}
+          restore-keys: |
+            brew-x86_64-${{ runner.os }}-
 
       - name: Install build deps
         # Wine is built x86_64-only under Rosetta (matches upstream Whisky's
@@ -93,16 +112,17 @@ jobs:
           file /usr/local/opt/gstreamer/lib/libgstreamer-1.0.dylib || true
 
       - name: Restore ccache
-        # Wine has ~10k C files; ccache makes incremental rebuilds (same
-        # CrossOver source, different patches) drop from ~70 min compile to
-        # ~10 min. Cache key includes commit SHA so every build saves a fresh
-        # snapshot; restore-keys lets any build for the same CrossOver
-        # version pull the most recent prior cache.
-        uses: actions/cache@v4
+        # Split restore/save rather than actions/cache, because actions/cache
+        # only writes its cache when the job SUCCEEDS. Run 33024070675
+        # compiled all of Wine and then failed a post-build sanity check, so a
+        # full 54-minute compile was discarded and the next run started cold.
+        # A failed build is exactly when the cache is most valuable.
+        uses: actions/cache/restore@v4
         with:
           path: ~/.ccache
-          key: wine-ccache-${{ env.CROSSOVER_VERSION }}-${{ github.sha }}
+          key: wine-ccache-${{ env.CROSSOVER_VERSION }}-${{ env.WINE_ARCHS }}-${{ github.sha }}
           restore-keys: |
+            wine-ccache-${{ env.CROSSOVER_VERSION }}-${{ env.WINE_ARCHS }}-
             wine-ccache-${{ env.CROSSOVER_VERSION }}-
 
       - name: Build Wine from CrossOver source
@@ -113,7 +133,17 @@ jobs:
 
       - name: ccache stats (post-build)
         if: always()
-        run: ccache --show-stats || true
+        run: |
+          export CCACHE_DIR="$HOME/.ccache"
+          ccache --show-stats || true
+          du -sh "$CCACHE_DIR" 2>/dev/null || true
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: wine-ccache-${{ env.CROSSOVER_VERSION }}-${{ env.WINE_ARCHS }}-${{ github.sha }}
 
       - name: Compute checksum
         run: |

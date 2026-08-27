@@ -34,6 +34,14 @@ WORK_DIR="${WORK_DIR:-$(pwd)/build/wine-build}"
 OUT_DIR="${OUT_DIR:-$(pwd)/out}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
 
+# Which PE architectures Wine builds. "i386,x86_64" is New WoW64 (needed for
+# 32-bit installers and 32-bit Wine drivers). "x86_64" is 64-bit only.
+#
+# Bisection note: BeamNG's dinput8 loader-lock hang appeared when this went
+# from x86_64 to i386,x86_64 (phase1k -> phase1l), so a 64-bit-only build is
+# the first thing to compare against. See docs/open-source-roadmap.md.
+WINE_ARCHS="${WINE_ARCHS:-i386,x86_64}"
+
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
 # ---- prerequisite check ----
@@ -152,24 +160,35 @@ setup_ccache() {
   local ccache_bin
   ccache_bin="$WORK_DIR/ccache-bin"
   mkdir -p "$ccache_bin"
-  for cc in clang clang++ cc gcc g++ c++ \
-            aarch64-w64-mingw32-clang \
-            aarch64-w64-mingw32-clang++ \
-            i686-w64-mingw32-clang \
-            i686-w64-mingw32-clang++ \
-            x86_64-w64-mingw32-clang \
-            x86_64-w64-mingw32-clang++; do
+  # configure.ac probes gcc names BEFORE clang names for i386/x86_64:
+  #   x86_64-w64-mingw32-gcc  amd64-w64-mingw32-gcc  x86_64-w64-mingw32-clang ...
+  # llvm-mingw ships all of them, so Wine picks the gcc-named wrapper and any
+  # symlink set covering only the clang names misses every PE-side compile.
+  for cc in clang clang++ cc gcc g++ c++; do
     ln -sf "$ccache_path" "$ccache_bin/$cc"
+  done
+  for triple in i686 x86_64 amd64 aarch64 arm64ec armv7; do
+    for suffix in gcc g++ clang clang++ cc c++; do
+      ln -sf "$ccache_path" "$ccache_bin/${triple}-w64-mingw32-${suffix}"
+    done
   done
   # Prepend so configure's compiler probes hit the symlinks first; ccache
   # then walks the rest of PATH (including llvm-mingw/bin) to find the
   # real binary by the same name.
   export PATH="$ccache_bin:$PATH"
-  # Default size 5G is plenty; pin to 2G so CI cache stays under the
-  # actions/cache 10G limit even with many fork builds.
-  export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-2G}"
+  # ccache 4.x follows platform conventions and would otherwise write to
+  # ~/Library/Caches/ccache on macOS, which is not what CI caches.
+  export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
+  export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-6G}"
+  # Absolute build paths differ between a CI checkout and a local tree, and -g
+  # bakes them into the object, so without BASEDIR direct mode never hits.
+  export CCACHE_BASEDIR="${CCACHE_BASEDIR:-$WORK_DIR}"
+  export CCACHE_COMPILERCHECK="${CCACHE_COMPILERCHECK:-content}"
+  export CCACHE_SLOPPINESS="${CCACHE_SLOPPINESS:-locale,time_macros,include_file_ctime,include_file_mtime,system_headers}"
+  mkdir -p "$CCACHE_DIR"
   ccache --max-size="$CCACHE_MAXSIZE" >/dev/null 2>&1 || true
-  log "ccache enabled: $ccache_path (CCACHE_DIR=${CCACHE_DIR:-$HOME/.ccache}, max=$CCACHE_MAXSIZE)"
+  log "ccache enabled: $ccache_path (CCACHE_DIR=$CCACHE_DIR, max=$CCACHE_MAXSIZE)"
+  log "ccache real cache_dir: $(ccache --show-config 2>/dev/null | awk -F'= *' '/(^| )cache_dir/{print $2; exit}')"
   ccache --show-stats 2>/dev/null | head -10 | sed 's/^/  /' >&2 || true
 }
 
@@ -196,6 +215,29 @@ fetch_source() {
 # cocoa_window.m:985 (CW HACK 22435). On aarch64 this breaks the build with
 # "use of undeclared identifier 'WineMetalLayer'". Drop the guard — the class
 # is a trivial CAMetalLayer subclass and builds fine on aarch64.
+# Applies a patch, distinguishing "already present in this tree" from "rotted".
+# A patch that no longer applies used to be a WARN, so a silently skipped patch
+# looked identical to a successful one. Hack 18311 had been failing on every
+# single build for exactly this reason: it was extracted against upstream
+# wine-11.0, and CrossOver's own tree already contains CodeWeavers' own hack.
+apply_patch() {
+  local patch_file="$1" wine_src="$2" name="$3"
+  if [ ! -f "$patch_file" ]; then
+    log "ERROR: $name patch missing at $patch_file"
+    exit 1
+  fi
+  if ( cd "$wine_src" && patch -p1 --dry-run --silent --force -R < "$patch_file" ) >/dev/null 2>&1; then
+    log "$name already present in this tree — skipping"
+    return
+  fi
+  if ( cd "$wine_src" && patch -p1 --silent --force < "$patch_file" ); then
+    log "$name applied"
+    return
+  fi
+  log "ERROR: $name does not apply and is not already present — the source tree moved"
+  exit 1
+}
+
 patch_source() {
   local d="$WORK_DIR/src/wine/dlls/winemac.drv"
   for f in "$d/d3dmetal_objc.h" "$d/d3dmetal_objc.m" "$d/d3dmetal.c"; do
@@ -215,16 +257,20 @@ patch_source() {
   local hack18311="$script_dir/patches/hack-18311-wined3d-vulkan-default.patch"
   local wine_src="$WORK_DIR/src/wine"
   [ -d "$wine_src" ] || wine_src="$WORK_DIR/src/sources/wine"
-  if [ -f "$hack18311" ] && [ -f "$wine_src/dlls/wined3d/directx.c" ]; then
-    log "Applying Hack 18311 (wined3d-vulkan default on macOS)"
-    if ( cd "$wine_src" && patch -p1 --forward --silent < "$hack18311" ); then
-      :
-    else
-      log "WARN: Hack 18311 patch returned non-zero — may already be applied"
-    fi
-  else
-    log "WARN: Hack 18311 patch or wined3d directx.c not found — skipping"
-  fi
+  apply_patch "$hack18311" "$wine_src" "Hack 18311 (wined3d-vulkan default on macOS)"
+
+  # BOOLEAN syscall arguments: the PE side (MS x64 ABI) may write only the low
+  # byte of a sub-word argument, while the unix side (System V) is compiled
+  # assuming the caller zero-extended it. Stale garbage in the high bits then
+  # reads as TRUE. This hangs BeamNG.drive in GetLogicalDrives(). See
+  # docs/open-source-roadmap.md.
+  local boolabi="$script_dir/patches/ntdll-boolean-syscall-arg-abi.patch"
+  apply_patch "$boolabi" "$wine_src" "BOOLEAN syscall-argument ABI fix"
+
+  grep -q 'syscall_bool_arg( restart )' "$wine_src/dlls/ntdll/unix/sync.c" || {
+    log "ERROR: syscall_bool_arg missing from sync.c after patching"
+    exit 1
+  }
 }
 
 # ---- configure + build wine ----
@@ -329,7 +375,7 @@ build_wine() {
     cd "$build64"
     arch -x86_64 "$src/configure" \
       --prefix="$prefix" \
-      --enable-archs=i386,x86_64 \
+      --enable-archs="$WINE_ARCHS" \
       --disable-tests \
       --without-alsa --without-capi --without-dbus --without-inotify \
       --without-oss --without-pulse --without-udev --without-v4l2 --without-x \
@@ -374,7 +420,11 @@ build_wine() {
     log "ERROR: $prefix/lib/wine/x86_64-unix backend missing — broken build"
     exit 1
   fi
-  if [ ! -d "$prefix/lib/wine/i386-windows" ]; then
+  case ",$WINE_ARCHS," in
+    *,i386,*) _need_i386=1 ;;
+    *)        _need_i386=0 ;;
+  esac
+  if [ "$_need_i386" = 1 ] && [ ! -d "$prefix/lib/wine/i386-windows" ]; then
     log "ERROR: $prefix/lib/wine/i386-windows missing — WoW64 build failed"
     exit 1
   fi

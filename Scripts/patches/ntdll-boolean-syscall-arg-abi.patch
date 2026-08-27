@@ -1,0 +1,57 @@
+Narrow BOOLEAN syscall arguments at the PE/unix boundary.
+
+Fork-local. NOT submitted upstream — see docs/upstream-status.md for what is and
+is not established.
+
+GetLogicalDrives() loops forever on this bundle: our llvm-mingw PE build writes
+one byte of the `restart` argument slot, the System V unix side tests all 32
+bits of it, and __wine_syscall_dispatcher forwards the slot raw. Stale garbage
+above the low byte reads as TRUE, pinning the enumeration index at 0.
+
+--- a/dlls/ntdll/unix/sync.c
++++ b/dlls/ntdll/unix/sync.c
+@@ -2073,6 +2073,16 @@
+ }
+ 
+ 
++/* The PE side may pass a BOOLEAN with garbage in the high bits: the MS x64 ABI
++ * leaves them undefined, while the System V ABI this side is built for lets the
++ * compiler assume they were zero-extended.
++ */
++static inline int syscall_bool_arg( BOOLEAN value )
++{
++    return *(volatile unsigned char *)&value != 0;
++}
++
++
+ /**************************************************************************
+  *           NtQueryDirectoryObject   (NTDLL.@)
+  */
+@@ -2081,7 +2091,8 @@
+                                         ULONG *context, ULONG *ret_size )
+ {
+     unsigned int status, i, count, total_len, pos, used_size, used_count, strpool_head;
+-    ULONG index = restart ? 0 : *context;
++    ULONG index = syscall_bool_arg( restart ) ? 0 : *context;
++    const int single = syscall_bool_arg( single_entry );
+     struct directory_entry *entries;
+ 
+     if (!(entries = malloc( size ))) return STATUS_NO_MEMORY;
+@@ -2090,7 +2101,7 @@
+     {
+         req->handle = wine_server_obj_handle( handle );
+         req->index = index;
+-        req->max_count = single_entry ? 1 : UINT_MAX;
++        req->max_count = single ? 1 : UINT_MAX;
+         wine_server_set_reply( req, entries, size );
+         status = wine_server_call( req );
+         count = reply->count;
+@@ -2159,7 +2170,7 @@
+         return STATUS_NO_MORE_ENTRIES;
+     }
+ 
+-    if (single_entry && !used_count)
++    if (single && !used_count)
+     {
+         if (ret_size) *ret_size = 2 * sizeof(*buffer) + 2 * sizeof(WCHAR) + total_len;
+         return STATUS_BUFFER_TOO_SMALL;

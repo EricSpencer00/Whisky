@@ -11,9 +11,35 @@
 
 Upstream [Whisky-App/Whisky](https://github.com/Whisky-App/Whisky) was [archived on 2025-05-11](https://docs.getwhisky.app/maintenance-notice). **This is a community-maintenance fork** (`EricSpencer00/Whisky`) that keeps the app compiling on current macOS/Xcode and tracks new [Gcenx GPTK](https://github.com/Gcenx/game-porting-toolkit) releases. See [MAINTAINING.md](MAINTAINING.md) for scope and build instructions. Apps and games may still break; no parity promise with CrossOver.
 
-### FOSS-from-source
+### Windows games on Apple Silicon, with nothing paid in the stack
 
-This fork builds its own Wine directly from [CodeWeavers' LGPL-published CrossOver source tree](https://www.codeweavers.com/crossover/source) via [`Scripts/build-wine.sh`](Scripts/build-wine.sh) and the [`BuildWine`](.github/workflows/BuildWine.yml) GitHub Actions workflow. Released tarballs appear under this repo's Releases (tagged `wine-vX.Y.Z`). Set the `WHISKY_WINE_BASE_URL` environment variable to point Whisky's first-run installer at the fork's release assets instead of the archived upstream CDN. Apple's GPTK / D3DMetal are not bundled (Apple's license does not permit third-party redistribution); users drop the framework into `Libraries/Wine/lib/external/` themselves.
+This fork builds Wine from [CodeWeavers' LGPL source](https://www.codeweavers.com/crossover/source)
+and pairs it with [DXMT](https://github.com/3Shain/dxmt) (LGPL-2.1) for Direct3D 11.
+No CrossOver, no Apple Game Porting Toolkit, no developer account — every piece is
+redistributable.
+
+**BeamNG.drive 0.38.5 is playable**: 108-128 FPS at 1280x720 on an M1 Max, driving a
+vehicle, with the in-game HTML UI compositing over Direct3D. Direct3D reports feature
+level 11_1 with the real `Apple M1 Max` adapter.
+
+```sh
+./Scripts/install-bundle.sh --run-id <successful BuildWine run>
+./Scripts/run-dosdev-probe.sh        # bundle sane?   exits 2 if not
+./Scripts/run-d3d11-probe.sh probe   # renderer sane? want featurelevel=0xb100
+```
+
+Start with **[docs/foss-bundle-usage.md](docs/foss-bundle-usage.md)** — install,
+verification, how to tell which layer is at fault when something breaks, and the
+known limitations. [docs/open-source-roadmap.md](docs/open-source-roadmap.md) is the
+long-form record, including the wrong turns.
+
+Two things worth knowing before you invest:
+
+- The release tarball is **Wine only**. Installing it without the MoltenVK symlink and
+  DXMT silently falls back to feature level 9_3 rather than failing. Use
+  `Scripts/install-bundle.sh`.
+- Everything here is x86_64 under Rosetta 2, which Apple is removing in macOS 28
+  (fall 2027). See issue #20.
 
 <img width="650" alt="Config" src="https://github.com/Whisky-App/Whisky/assets/42140194/d0a405e8-76ee-48f0-92b5-165d184a576b">
 

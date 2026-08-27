@@ -1,130 +1,110 @@
-# Using the FOSS Wine bundle
+# Running Windows games on Apple Silicon with no paid software
 
-This fork ships a fully open-source Wine bundle built from CodeWeavers'
-LGPL-published CrossOver source via [`Scripts/build-wine.sh`](../Scripts/build-wine.sh)
-and the [`BuildWine`](../.github/workflows/BuildWine.yml) GitHub Actions
-workflow. Releases are tagged `wine-vX.Y.Z` and ship a `Libraries.tar.gz`
-that drops in as a replacement for the archived upstream's CDN at
-`data.getwhisky.app/Wine/Libraries.tar.gz`.
+This fork builds Wine from [CodeWeavers' LGPL-published CrossOver source](https://www.codeweavers.com/crossover/source)
+and pairs it with [DXMT](https://github.com/3Shain/dxmt) for Direct3D 11.
+Nothing here requires CrossOver, Apple's Game Porting Toolkit, or a developer
+account. Every component is redistributable.
 
-## What's in the bundle
+**Status:** BeamNG.drive 0.38.5 is playable — 108-128 FPS at 1280x720 on an
+M1 Max, driving a vehicle, with the in-game HTML UI compositing correctly.
 
-- **Wine 11.0** — built from CrossOver 26.1.0 source under Rosetta 2,
-  layout matches upstream Whisky exactly (`bin/wine64`,
-  `bin/wine64-preloader`, `bin/wineserver`, `lib/wine/{i386-windows,
-  x86_32on64-unix, x86_64-unix, x86_64-windows}/`).
-- **MoltenVK 1.4.1** universal (x86_64 + arm64) at `lib/external/`,
-  advertising Vulkan 1.4 — clears DXVK 2.7.1's Vulkan 1.3 minimum.
-- **DXVK 2.7.1** D3D8/9/10/11 + DXGI DLLs at `lib/external/dxvk/`.
+## Requirements
 
-What's NOT bundled:
-- **Apple's GPTK / D3DMetal.framework** — Apple's license forbids
-  third-party redistribution. Drop it yourself into
-  `~/Library/Application Support/com.isaacmarovitz.Whisky/Libraries/Wine/lib/external/`
-  if you need the D3D-on-Metal backend instead of DXVK.
-- **gnutls / schannel SSL** — disabled in the current build because the
-  CI runner's ARM64 brew can't link an x86_64 build. Steam HTTPS and
-  any Windows app using SChannel will fall back to OpenSSL or fail.
-  Tracked as a follow-up — re-enabled by installing x86_64 brew at
-  `/usr/local` in CI alongside ARM brew.
+- Apple Silicon Mac, macOS 26 or later
+- Rosetta 2 (`softwareupdate --install-rosetta`) — see the caveat at the bottom
+- Your own legally obtained copy of whatever you want to run
 
-## Pointing Whisky at this bundle
-
-Set `WHISKY_WINE_BASE_URL` before launching Whisky.app for the first
-time (or before deleting `~/Library/Application Support/com.isaacmarovitz.Whisky/Libraries/`
-to force re-bootstrap):
+## Quick start
 
 ```sh
-export WHISKY_WINE_BASE_URL="https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.1.0-foss-phase1l"
-open -a Whisky
+git clone https://github.com/EricSpencer00/Whisky
+cd Whisky
+
+# Download the prebuilt bundle from the latest release, install it, and add DXMT
+./Scripts/install-bundle.sh --run-id <id-of-a-successful-BuildWine-run>
+
+# or, if you already have Libraries.tar.gz
+./Scripts/install-bundle.sh path/to/Libraries.tar.gz
 ```
 
-Whisky will fetch `$WHISKY_WINE_BASE_URL/Libraries.tar.gz` instead of
-the upstream CDN. The override is read at
-[`WhiskyKit/Sources/WhiskyKit/WhiskyWine/WhiskyWineInstaller.swift`](../WhiskyKit/Sources/WhiskyKit/WhiskyWine/WhiskyWineInstaller.swift).
+`install-bundle.sh` exists because the release tarball is **Wine only**.
+Installing it by hand and stopping there drops two things and then fails
+*quietly*, reporting Direct3D feature level 9_3 instead of erroring:
 
-If you already have a working Whisky install and want to swap in the
-FOSS bundle without losing your bottles, back up `Libraries/` first
-(NOT inside `~/Library/Application Support/com.isaacmarovitz.Whisky/`
-— Whisky's installer will delete anything in there during re-bootstrap):
+- `lib/wine/x86_64-unix/libvulkan.1.dylib`, a symlink to MoltenVK. `win32u`
+  dlopens that exact filename from that exact directory and searches nowhere
+  else.
+- `lib/wine/x86_64-unix/winemetal.so`, DXMT's unixlib.
+
+The script does the tarball, the symlink, DXMT, and then verifies.
+
+## Check that it works
 
 ```sh
-APP="$HOME/Library/Application Support/com.isaacmarovitz.Whisky"
-cp -R "$APP/Libraries" "$HOME/whisky-libraries-bak"
-rm -rf "$APP/Libraries"
-WHISKY_WINE_BASE_URL="..." open -a Whisky
+./Scripts/run-dosdev-probe.sh    # bundle sane?    exits 2 if not
+./Scripts/run-d3d11-probe.sh probe   # renderer sane?
 ```
 
-## Verified to work
+Expected:
 
-End-to-end visual proof on M1 Max + macOS 26 Tahoe with this stack:
+```
+### PASS
+device    hr=0x00000000 featurelevel=0xb100
+adapter=Apple M1 Max vendor=0x106b device=0x0000
+swapchain hr=0x00000000 featurelevel=0xb100
+present   hr=0x00000000
+```
 
-- `wine64 notepad` — Windows notepad renders, GDI text + scrollbars work
-- `wine64 winecfg` — full tabbed dialog with controls, dropdowns, buttons
-- BeamNG.drive — engine boots, FMOD inits, DXVK renders `Apple M1 Max
-  (D3D11)` adapter, all shaders compile. World render blocked by
-  Ultralight UI shared-texture handshake (see "Known limitations").
+`0xb100` is feature level 11_1. If you see `0x9300` the renderer fell back to
+wined3d and DXMT is not installed.
 
-## Vulkan portability gotcha
-
-MoltenVK ships as a Vulkan **portability driver** (`is_portability_driver:
-true` in `MoltenVK_icd.json`). Per the portability subset spec, applications
-that create a Vulkan instance with a portability driver must enable
-`VK_KHR_portability_enumeration` and pass the
-`VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR` flag — otherwise
-`vkCreateInstance` returns `VK_ERROR_INCOMPATIBLE_DRIVER (-9)`.
-
-Wine 11's `win32u_vkCreateInstance` does NOT enable that extension, so
-when wined3d-vulkan (or any Wine app talking Vulkan via win32u) tries to
-create an instance, it gets -9 and falls back to no-renderer. **Workaround:
-copy the ICD JSON and flip `is_portability_driver` to `false`:**
+## Building Wine yourself
 
 ```sh
-mkdir -p ~/.config/vulkan/icd.d
-sed 's/"is_portability_driver" : true/"is_portability_driver" : false/' \
-  /usr/local/etc/vulkan/icd.d/MoltenVK_icd.json \
-  > ~/.config/vulkan/icd.d/MoltenVK_icd_noport.json
-export VK_ICD_FILENAMES="$HOME/.config/vulkan/icd.d/MoltenVK_icd_noport.json"
+./Scripts/build-wine.sh          # 60-90 min cold, much less with a warm ccache
+WINE_ARCHS=x86_64 ./Scripts/build-wine.sh   # 64-bit only
 ```
 
-The Vulkan loader then treats MoltenVK as a non-portability driver and stops
-demanding the portability bit. Until Wine itself learns to set the flag,
-this env override is required for any wined3d-vulkan path on macOS.
+Or run the `BuildWine` workflow and take the artifact.
+
+## Installing games
+
+The bottle is a normal Wine prefix, so anything that works in Wine works here.
+For Steam games, `steamcmd` is the path of least resistance — it is a console
+app, needs no CEF, and downloads games you already own:
+
+```sh
+export WINEPREFIX=~/Library/Containers/com.isaacmarovitz.Whisky/Bottles/<uuid>
+wine64 'C:\steamcmd\steamcmd.exe' +login <your-account> +app_update <appid> +quit
+```
+
+The Steam client itself also runs, including its seven CEF helper processes, but
+its own UI hits a DXMT limitation ([3Shain/dxmt#141](https://github.com/3Shain/dxmt/issues/141)),
+so use `steamcmd` for installing and updating.
+
+## Triage when something does not work
+
+Run the two probes above first. They tell you which layer is at fault, which is
+worth far more than guessing:
+
+| probe result | meaning |
+|---|---|
+| `run-dosdev-probe.sh` fails | the Wine bundle is bad — rebuild or reinstall |
+| probe passes, `run-d3d11-probe.sh` shows `0x9300` | DXMT is not installed |
+| both pass, game is broken or slow | the renderer or the game — report to DXMT, not here |
+
+That last row matters. A game that launches and renders but runs badly is
+almost always a DXMT maturity issue, not a bundle issue, and patching Wine will
+not help.
 
 ## Known limitations
 
-- **Apps using `IDXGIResource::GetSharedHandle()` (NT handle variant)
-  hang.** DXVK 2.7.1 doesn't implement NT shared handles — only legacy
-  KMT. This blocks any app that composites GPU textures across process
-  boundaries via shared D3D11 resources. Most notably: BeamNG.drive's
-  Ultralight-based UI. Tracked at https://github.com/doitsujin/dxvk
-  as "shared NT handle" issues. Workaround in progress: force builtin
-  wined3d via `WINEDLLOVERRIDES="dxgi,d3d11,d3d10core=b"` so wineserver
-  mediates the handle (no Vulkan extension required).
-- **No SChannel TLS** — see above. Use `WINEDLLOVERRIDES=schannel=n`
-  with a native Windows `schannel.dll` if absolutely required, or wait
-  for the x86_64-brew CI fix.
-- **No GPTK / D3DMetal** — bring your own from Apple Developer or
-  Gcenx tooling. The bundle pins DXVK as the D3D backend.
-
-## BeamNG-specific notes
-
-The earlier `beamng.drive.x64.exe.foss-noCefFatal-bak` patch (single byte
-flip from `E8` CALL to `C3` RET at offset `0xBD8E81`) breaks BeamNG: it
-neuters the wrong call and the parent function returns prematurely,
-killing init right after `saveStoredVersion`. **Don't apply that patch.**
-The unmodified BeamNG binary boots cleanly past CPU detection and
-DirectInput init under our Wine 11 build.
-
-## Building it yourself
-
-```sh
-git clone https://github.com/EricSpencer00/Whisky.git
-cd Whisky
-CROSSOVER_VERSION=26.1.0 ./Scripts/build-wine.sh
-# Output at out/Libraries.tar.gz
-```
-
-Build takes ~80 minutes on a fresh macos-15 GitHub runner under
-Rosetta. Local builds need: `brew install bison flex gst-plugins-base
-freetype molten-vk pkgconf sdl2 vulkan-headers vulkan-loader`.
+- **Direct3D 12 is not supported.** DXMT implements D3D11 and D3D10.
+- **Direct3D 9 and older** bypass DXMT and go through wined3d and MoltenVK,
+  which is a different and much less capable path.
+- **Anti-cheat** (BattlEye, EAC) does not work and is not a goal.
+- **Heavy tessellation workloads** are weak. Unigine Heaven stalls before asset
+  loading under D3D11 while the same build runs it fine under D3D9.
+- **Apple is removing Rosetta 2.** macOS 27 (Sept 2026) still supports it but
+  uninstalls it on upgrade; macOS 28 (fall 2027) largely removes it. Everything
+  here is x86_64 under Rosetta. Tracking issue: #20.
