@@ -1,5 +1,11 @@
 # BeamNG.drive via Sikarugir + DXMT — the actually-working recipe
 
+> **SUPERSEDED (2026-04-18 document).** Sikarugir with DXMT 0.74 was the best
+> path at the time. It is not any more: this fork's own Wine 11 bundle with
+> DXMT 0.80 runs BeamNG at 108-128 FPS.
+>
+> Start at **[foss-bundle-usage.md](foss-bundle-usage.md)**. Kept for the record.
+
 After exhausting the Whisky-internal paths documented in
 [`beamng-runbook.md`](beamng-runbook.md), the only Wine-based wrapper that
 currently reaches the BeamNG rendering stage on Apple Silicon is

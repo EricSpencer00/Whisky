@@ -1,5 +1,11 @@
 # GPTK 3.0-3 Wine experiment — 2026-04-17
 
+> **HISTORICAL (2026-04-17 experiment).** Apple's GPTK / D3DMetal is not
+> redistributable and is no longer used here. DXMT reaches the same Direct3D
+> feature level and is LGPL-2.1.
+>
+> Start at **[foss-bundle-usage.md](foss-bundle-usage.md)**. Kept for the record.
+
 ## Context
 Whisky is archived. Its bundled Wine/GPTK (v2.5.0 "WhiskyWine") contains:
 - Wine 7.7 (CrossOver 22.1.1 base)
