@@ -85,6 +85,12 @@ from a prefix problem, and that is what produced the first real backtrace.
   against real wined3d means restoring the `.dxmtbak-*` files first.
 - Launchers are single-instance. A second copy signals the first and exits, and
   the log line is `Received command from another instance`.
+- **Wine cannot create windows at all while the display is asleep.** The log
+  says `nodrv_CreateWindow ... no driver could be loaded`, and what follows is
+  worse than nothing: window sizes come back as garbage and DXMT asks Metal for
+  a texture 3224836536 wide, which trips a Metal assertion and takes the
+  process down. The Rockstar launcher then reports that it timed out loading
+  its content, which points nowhere near the cause. Wake the display first.
 - **A slept display captures as solid black.** Every window then scores as
   "drew nothing" at once, which reads as a regression from whatever you changed
   last. This cost an hour chasing a BeamNG failure that was not happening;
