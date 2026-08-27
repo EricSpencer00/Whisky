@@ -1,0 +1,37 @@
+/* A DWARF expression is input, not something to trust. Wine's evaluator divides
+ * by the top of its own stack without checking it, so a zero divisor faults
+ * inside dbghelp itself. Any program that loads dbghelp for its crash handler
+ * dies at startup instead of running; GZDoom is one.
+ *
+ * DW_OP_shra is separately wrong: it is an arithmetic shift right, and dividing
+ * by 1 << n both truncates the wrong way for negative values and yields a zero
+ * divisor once n reaches the width of an int.
+ */
+--- a/dlls/dbghelp/dwarf.c
++++ b/dlls/dbghelp/dwarf.c
+@@ -1031,9 +1031,9 @@
+         case DW_OP_shl:         stack[stk-1] <<= stack[stk]; stk--; break;
+         case DW_OP_shr:         stack[stk-1] >>= stack[stk]; stk--; break;
+         case DW_OP_plus_uconst: stack[stk] += dwarf2_leb128_as_unsigned(ctx); break;
+-        case DW_OP_shra:        stack[stk-1] = stack[stk-1] / (1 << stack[stk]); stk--; break;
+-        case DW_OP_div:         stack[stk-1] = stack[stk-1] / stack[stk]; stk--; break;
+-        case DW_OP_mod:         stack[stk-1] = stack[stk-1] % stack[stk]; stk--; break;
++        case DW_OP_shra:        stack[stk-1] = stack[stk] < 8 * sizeof(stack[0]) ? (DWORD_PTR)((LONG_PTR)stack[stk-1] >> stack[stk]) : 0; stk--; break;
++        case DW_OP_div:         stack[stk-1] = stack[stk] ? stack[stk-1] / stack[stk] : 0; stk--; break;
++        case DW_OP_mod:         stack[stk-1] = stack[stk] ? stack[stk-1] % stack[stk] : 0; stk--; break;
+         case DW_OP_ge:          stack[stk-1] = (stack[stk-1] >= stack[stk]); stk--; break;
+         case DW_OP_gt:          stack[stk-1] = (stack[stk-1] >  stack[stk]); stk--; break;
+         case DW_OP_le:          stack[stk-1] = (stack[stk-1] <= stack[stk]); stk--; break;
+@@ -3788,9 +3788,9 @@
+         case DW_OP_shl:         stack[sp-1] <<= stack[sp]; sp--; break;
+         case DW_OP_shr:         stack[sp-1] >>= stack[sp]; sp--; break;
+         case DW_OP_plus_uconst: stack[sp] += dwarf2_leb128_as_unsigned(&ctx); break;
+-        case DW_OP_shra:        stack[sp-1] = (LONG_PTR)stack[sp-1] / (1 << stack[sp]); sp--; break;
+-        case DW_OP_div:         stack[sp-1] = (LONG_PTR)stack[sp-1] / (LONG_PTR)stack[sp]; sp--; break;
+-        case DW_OP_mod:         stack[sp-1] = (LONG_PTR)stack[sp-1] % (LONG_PTR)stack[sp]; sp--; break;
++        case DW_OP_shra:        stack[sp-1] = stack[sp] < 8 * sizeof(stack[0]) ? (DWORD64)((LONG_PTR)stack[sp-1] >> stack[sp]) : 0; sp--; break;
++        case DW_OP_div:         stack[sp-1] = stack[sp] ? (LONG_PTR)stack[sp-1] / (LONG_PTR)stack[sp] : 0; sp--; break;
++        case DW_OP_mod:         stack[sp-1] = stack[sp] ? (LONG_PTR)stack[sp-1] % (LONG_PTR)stack[sp] : 0; sp--; break;
+         case DW_OP_ge:          stack[sp-1] = ((LONG_PTR)stack[sp-1] >= (LONG_PTR)stack[sp]); sp--; break;
+         case DW_OP_gt:          stack[sp-1] = ((LONG_PTR)stack[sp-1] >  (LONG_PTR)stack[sp]); sp--; break;
+         case DW_OP_le:          stack[sp-1] = ((LONG_PTR)stack[sp-1] <= (LONG_PTR)stack[sp]); sp--; break;

@@ -89,3 +89,15 @@ from a prefix problem, and that is what produced the first real backtrace.
 | OpenTTD 14.1 | OpenGL | renders |
 | Unigine Heaven | D3D11 | runs, needs its own launcher for arguments |
 | Rockstar Games Launcher | D3D11 + CEF | initialises fully, UI window stays unpainted |
+| GZDoom (Vulkan) | Vulkan on MoltenVK | renders, but the green channel is missing |
+| GZDoom (OpenGL) | OpenGL | null function pointer; macOS OpenGL lacks entry points it calls |
+
+## Bugs this turned up
+
+- **Wine's dbghelp divides by zero evaluating a DWARF expression.** Anything
+  that loads dbghelp for a crash handler dies at startup with
+  `Unhandled division by zero`. Our own build ships DWARF, so it trips on
+  itself. Fixed by `Scripts/patches/dbghelp-dwarf-divide-guard.patch`.
+- **`DW_OP_shra` was implemented as a division by `1 << n`.** That truncates the
+  wrong way for negative values and gives a zero divisor once `n` reaches the
+  width of an `int`. It is a shift.
