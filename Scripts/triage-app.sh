@@ -52,6 +52,11 @@ pkill -9 -f wineserver 2>/dev/null; sleep 1
 "$WINE/bin/wine64" "$@" >"$wlog" 2>&1 &
 sleep "$WAIT"
 
+# A slept display captures as solid black, which scores as "drew nothing" for
+# every window and reads as a regression. Wake it before looking.
+caffeinate -u -t 3 2>/dev/null || true
+sleep 2
+
 cp "$probes/enumwin.exe" "$BOTTLE/drive_c/" 2>/dev/null
 tree=$("$WINE/bin/wine64" 'C:\enumwin.exe' 2>/dev/null)
 
@@ -70,11 +75,16 @@ while read -r line; do
   [ -n "$id" ] || continue
   name=$(echo "$line" | sed -n 's/.*name=\(.*\) bounds=.*/\1/p')
   shot="$OUT/$TAG-$id.png"
-  screencapture -x -o -l "$id" "$shot" 2>/dev/null || continue
+  # Neither capture path covers everything: screencapture reads the active Space
+  # and returns transparency for a window on another one, and ScreenCaptureKit
+  # refuses some windows outright. Take whichever produces an image.
+  "$probes/winshot2" "$id" "$shot" >/dev/null 2>&1
+  [ -s "$shot" ] || screencapture -x -o -l "$id" "$shot" 2>/dev/null
+  [ -s "$shot" ] || continue
   stat=$("$probes/imgstat" "$shot" 2>/dev/null)
   verdicts="$verdicts$(echo "$stat" | sed 's/verdict=//;s/ .*//') "
   echo "- \`${name:-untitled}\` — $stat — [capture]($(basename "$shot"))" >>"$report"
-done < <("$probes/winshot" wine 2>/dev/null | grep "onscreen=true")
+done < <("$probes/winshot" wine 2>/dev/null | grep -v "name= ")
 
 if [ -z "$verdicts" ]; then
   if pgrep -f "$(basename "${1//\\//}")" >/dev/null 2>&1; then

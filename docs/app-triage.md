@@ -85,6 +85,15 @@ from a prefix problem, and that is what produced the first real backtrace.
   against real wined3d means restoring the `.dxmtbak-*` files first.
 - Launchers are single-instance. A second copy signals the first and exits, and
   the log line is `Received command from another instance`.
+- **A slept display captures as solid black.** Every window then scores as
+  "drew nothing" at once, which reads as a regression from whatever you changed
+  last. This cost an hour chasing a BeamNG failure that was not happening;
+  BeamNG's own log said it had loaded the level. `pmset -g assertions` shows
+  `UserIsActive 0` when it happens, and `caffeinate -u -t 3` wakes it. The
+  harness now does that before it looks.
+- Neither capture path covers every window. `screencapture -l` returns
+  transparency for a window on another Space; ScreenCaptureKit refuses some
+  windows with `Failed to start stream`. Try both.
 
 ## Results
 
