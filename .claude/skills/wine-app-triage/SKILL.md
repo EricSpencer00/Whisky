@@ -23,6 +23,27 @@ need new code. Suspect in this order and stop at the first hit.
 5. **Data.** Missing asset, unreadable font, malformed manifest.
 6. **Code.** Last. Only after a named, unimplemented function appears in a log.
 
+## Run the harness first
+
+```sh
+BOTTLE=<bottle dir> ./Scripts/triage-app.sh --tag <name> --wait 60 'C:\path\app.exe'
+```
+
+It writes a report with the window tree, the app's own dialog text, the DXMT and
+Wine complaints, a capture of every on-screen window and a verdict scored from
+pixel statistics. Read `docs/app-triage.md` before deciding anything from a
+screenshot: a window that looks white is often fully transparent, and one that
+captures as transparent is often on another Space. `Scripts/probes/` has an
+instrument for each of those questions.
+
+Two findings that each cost hours here, worth checking early:
+
+- **A window whose thread does not pump messages is never composited**, however
+  correctly it is drawn into. If a window is visible, correctly placed, on top,
+  and still empty, check whether the thread that created it answers messages.
+- **Cross-process GDI to a foreign window's DC returns success and never
+  reaches the screen.** Anything built on it fails silently.
+
 ## Run the probes first
 
 ```sh
