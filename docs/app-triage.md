@@ -92,7 +92,7 @@ from a prefix problem, and that is what produced the first real backtrace.
 |---|---|---|
 | BeamNG.drive | D3D11 | plays, 108–128 FPS |
 | Steam | D3D11 + CEF | renders, store and library usable |
-| Cave Story | DirectDraw | renders |
+| Cave Story | DirectDraw | plays; its 320x240 output sits unscaled in the corner of a full-screen window |
 | OpenTTD 14.1 | OpenGL | renders |
 | Unigine Heaven | D3D11 via DXMT | renders correctly, 3–19 FPS depending on the view |
 | SuperTuxKart 1.5 | OpenGL | runs, but sees OpenGL 2.1 and drops to reduced graphics |

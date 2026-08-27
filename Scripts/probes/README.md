@@ -15,6 +15,12 @@ than guessing. Each answers one question and nothing else.
 | `d3d12probe.c` | Does D3D12 work, and at what resource binding tier? |
 | `focuswin.c` | Brings a window to the front so it can be captured. |
 | `winshot2.swift` | Captures one window through ScreenCaptureKit, on any Space. |
+| `sendkeys.c` | Drives an app past a menu, so a run shows more than a title screen. |
+| `d3d11probe.c` | Does D3D11 work, at what feature level, and is the colour right? |
+
+`sendkeys` takes a single-word substring of the window title. Wine splits an
+argument containing a space, so `sendkeys "Cave Story" ...` finds nothing while
+`sendkeys Doukutsu ...` works.
 
 Build with `make -C Scripts/probes`.
 
