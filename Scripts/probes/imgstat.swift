@@ -39,5 +39,6 @@ for c in 0..<3 {
 }
 let mean = sum.reduce(0, +) / (count * 3)
 let verdict = colours.count <= 4 ? "blank" : (maxStdDev < 3.0 ? "near-blank" : "renders")
-print(String(format: "verdict=%@ size=%dx%d colours=%d stddev=%.1f mean=%.0f",
-             verdict, width, height, colours.count, maxStdDev, mean))
+print(String(format: "verdict=%@ size=%dx%d colours=%d stddev=%.1f mean=%.0f r=%.0f g=%.0f b=%.0f",
+             verdict, width, height, colours.count, maxStdDev, mean,
+             sum[0] / count, sum[1] / count, sum[2] / count))

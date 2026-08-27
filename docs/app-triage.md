@@ -89,8 +89,9 @@ from a prefix problem, and that is what produced the first real backtrace.
 | OpenTTD 14.1 | OpenGL | renders |
 | Unigine Heaven | D3D11 | runs, needs its own launcher for arguments |
 | Rockstar Games Launcher | D3D11 + CEF | initialises fully, UI window stays unpainted |
-| GZDoom (Vulkan) | Vulkan on MoltenVK | renders, but the green channel is missing |
-| GZDoom (OpenGL) | OpenGL | null function pointer; macOS OpenGL lacks entry points it calls |
+| GZDoom (Vulkan) | Vulkan on MoltenVK | renders and animates; red and blue are pinned at 255 |
+| GZDoom (OpenGL) | OpenGL | cannot run, see below |
+| D3D9 probe | D3D9 via wined3d | correct, shader model 3.0 |
 
 ## Bugs this turned up
 
@@ -101,3 +102,22 @@ from a prefix problem, and that is what produced the first real backtrace.
 - **`DW_OP_shra` was implemented as a division by `1 << n`.** That truncates the
   wrong way for negative values and gives a zero divisor once `n` reaches the
   width of an `int`. It is a shift.
+
+## Which graphics path to use
+
+Measured, not assumed. The probe clears to a known colour and the capture is
+scored per channel.
+
+- **D3D11 through DXMT** is the path that works. BeamNG plays at 108–128 FPS.
+- **D3D9 through wined3d** works and reports shader model 3.0. Colours are
+  correct: a clear to (0, 200, 60) measures r=3 g=195 b=16.
+- **D3D11 through wined3d** does not work at all —
+  `None of the requested D3D feature levels is supported`. So "wined3d is
+  broken" is too coarse: it is broken for D3D11 here, not for D3D9.
+- **OpenGL above 4.1 cannot work.** macOS tops out at 4.1 and has no
+  `ARB_direct_state_access`. GZDoom asks for the 4.5 DSA entry points, every
+  `glVertexArray*` lookup returns null, and it calls one. Games in this
+  position need a Vulkan or D3D renderer; there is nothing to fix in Wine.
+- **Vulkan straight to MoltenVK** works but is where the one colour bug is, and
+  D3D9 reaching the same MoltenVK with correct colours says the fault is in how
+  GZDoom sets up its swapchain, not in MoltenVK.
