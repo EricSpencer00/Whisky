@@ -497,7 +497,12 @@ PLIST
   log "Fetching DXMT"
   OUT_DIR="$OUT_DIR" WORK_DIR="$WORK_DIR" bash "$script_dir/fetch-dxmt.sh"
   local wl="$stage/Libraries/Wine/lib/wine"
-  for n in d3d11 dxgi d3d10core d3d10 d3d10_1 nvapi64; do
+  # d3d12 has to come from DXMT too: its dxgi replaces Wine's, and vkd3d reaches
+  # the Vulkan device through an interface only Wine's DXGI answers, so leaving
+  # Wine's d3d12 in place means no D3D12 at all.
+  # winemetal is two halves: the PE dll and the unix .so are built together and
+  # a mismatched pair fails with "winemetal.dll failed to initialize".
+  for n in d3d11 d3d12 dxgi d3d10core d3d10 d3d10_1 nvapi64 nvngx winemetal; do
     [ -f "$OUT_DIR/DXMT/x86_64-windows/$n.dll" ] && \
       cp "$OUT_DIR/DXMT/x86_64-windows/$n.dll" "$wl/x86_64-windows/$n.dll"
     [ -f "$OUT_DIR/DXMT/i386-windows/$n.dll" ] && [ -d "$wl/i386-windows" ] && \
