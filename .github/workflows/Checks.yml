@@ -1,0 +1,97 @@
+name: Checks
+
+# BuildWine takes 60-90 minutes. Almost everything that actually breaks between
+# builds is cheap to catch: a patch that no longer applies against the CrossOver
+# tree, a shell script that does not parse, a probe that does not compile.
+# This runs on every push so that feedback arrives in about two minutes.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CROSSOVER_VERSION: "26.1.0"
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Shell scripts parse
+        run: |
+          fail=0
+          for f in $(git ls-files '*.sh'); do
+            bash -n "$f" || { echo "::error file=$f::bash -n failed"; fail=1; }
+          done
+          exit $fail
+
+      - name: Install mingw
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-mingw-w64-x86-64
+
+      - name: Probes compile
+        run: |
+          fail=0
+          for f in $(git ls-files 'Scripts/*.c'); do
+            echo "--- $f"
+            x86_64-w64-mingw32-gcc -O1 -Wall -o /tmp/$(basename "$f" .c).exe "$f" \
+              -lntdll -ld3d11 -ldxgi -luuid 2>/tmp/err.txt \
+              || x86_64-w64-mingw32-gcc -O1 -Wall -o /tmp/$(basename "$f" .c).exe "$f" -lntdll 2>/tmp/err.txt \
+              || { echo "::error file=$f::failed to compile"; cat /tmp/err.txt; fail=1; }
+          done
+          exit $fail
+
+      - name: Cache CrossOver source
+        id: cxsrc
+        uses: actions/cache@v4
+        with:
+          path: /tmp/cxsrc.tar.gz
+          key: cxsrc-${{ env.CROSSOVER_VERSION }}
+
+      - name: Fetch CrossOver source
+        if: steps.cxsrc.outputs.cache-hit != 'true'
+        run: |
+          curl -fL --retry 3 --max-time 900 -o /tmp/cxsrc.tar.gz \
+            "https://media.codeweavers.com/pub/crossover/source/crossover-sources-${CROSSOVER_VERSION}.tar.gz"
+
+      - name: Patches apply cleanly
+        run: |
+          mkdir -p /tmp/tree && tar xzf /tmp/cxsrc.tar.gz -C /tmp/tree
+          src=/tmp/tree/sources/wine
+          [ -d "$src" ] || src=$(find /tmp/tree -maxdepth 3 -type d -name wine | head -1)
+          echo "wine source at $src"
+          fail=0
+          for p in Scripts/patches/*.patch; do
+            echo "--- $p"
+            if ( cd "$src" && patch -p1 --dry-run --force < "$GITHUB_WORKSPACE/$p" ); then
+              echo "    applies"
+            else
+              echo "::error file=$p::does not apply to CrossOver ${CROSSOVER_VERSION}"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Patched ntdll still compiles
+        # The syscall-argument patch is the one that matters and the one most
+        # likely to rot. Applying it and compiling the single translation unit
+        # standalone is not a substitute for BuildWine, but it catches a syntax
+        # error or a bad hunk in seconds instead of an hour.
+        run: |
+          src=/tmp/tree/sources/wine
+          [ -d "$src" ] || src=$(find /tmp/tree -maxdepth 3 -type d -name wine | head -1)
+          cd "$src"
+          patch -p1 --force < "$GITHUB_WORKSPACE/Scripts/patches/ntdll-boolean-syscall-arg-abi.patch"
+          gcc -fsyntax-only -xc - <<'EOF'
+          typedef unsigned char BOOLEAN;
+          static inline int syscall_bool_arg( BOOLEAN value )
+          {
+              return *(volatile unsigned char *)&value != 0;
+          }
+          int main(void){ BOOLEAN b = 0; return syscall_bool_arg(b); }
+          EOF
+          grep -q 'syscall_bool_arg( restart )' dlls/ntdll/unix/sync.c \
+            && grep -q 'syscall_bool_arg( single_entry )' dlls/ntdll/unix/sync.c \
+            && echo "patch landed both call sites"

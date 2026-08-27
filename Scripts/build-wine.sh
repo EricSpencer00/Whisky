@@ -160,24 +160,35 @@ setup_ccache() {
   local ccache_bin
   ccache_bin="$WORK_DIR/ccache-bin"
   mkdir -p "$ccache_bin"
-  for cc in clang clang++ cc gcc g++ c++ \
-            aarch64-w64-mingw32-clang \
-            aarch64-w64-mingw32-clang++ \
-            i686-w64-mingw32-clang \
-            i686-w64-mingw32-clang++ \
-            x86_64-w64-mingw32-clang \
-            x86_64-w64-mingw32-clang++; do
+  # configure.ac probes gcc names BEFORE clang names for i386/x86_64:
+  #   x86_64-w64-mingw32-gcc  amd64-w64-mingw32-gcc  x86_64-w64-mingw32-clang ...
+  # llvm-mingw ships all of them, so Wine picks the gcc-named wrapper and any
+  # symlink set covering only the clang names misses every PE-side compile.
+  for cc in clang clang++ cc gcc g++ c++; do
     ln -sf "$ccache_path" "$ccache_bin/$cc"
+  done
+  for triple in i686 x86_64 amd64 aarch64 arm64ec armv7; do
+    for suffix in gcc g++ clang clang++ cc c++; do
+      ln -sf "$ccache_path" "$ccache_bin/${triple}-w64-mingw32-${suffix}"
+    done
   done
   # Prepend so configure's compiler probes hit the symlinks first; ccache
   # then walks the rest of PATH (including llvm-mingw/bin) to find the
   # real binary by the same name.
   export PATH="$ccache_bin:$PATH"
-  # Default size 5G is plenty; pin to 2G so CI cache stays under the
-  # actions/cache 10G limit even with many fork builds.
-  export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-2G}"
+  # ccache 4.x follows platform conventions and would otherwise write to
+  # ~/Library/Caches/ccache on macOS, which is not what CI caches.
+  export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
+  export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-6G}"
+  # Absolute build paths differ between a CI checkout and a local tree, and -g
+  # bakes them into the object, so without BASEDIR direct mode never hits.
+  export CCACHE_BASEDIR="${CCACHE_BASEDIR:-$WORK_DIR}"
+  export CCACHE_COMPILERCHECK="${CCACHE_COMPILERCHECK:-content}"
+  export CCACHE_SLOPPINESS="${CCACHE_SLOPPINESS:-locale,time_macros,include_file_ctime,include_file_mtime,system_headers}"
+  mkdir -p "$CCACHE_DIR"
   ccache --max-size="$CCACHE_MAXSIZE" >/dev/null 2>&1 || true
-  log "ccache enabled: $ccache_path (CCACHE_DIR=${CCACHE_DIR:-$HOME/.ccache}, max=$CCACHE_MAXSIZE)"
+  log "ccache enabled: $ccache_path (CCACHE_DIR=$CCACHE_DIR, max=$CCACHE_MAXSIZE)"
+  log "ccache real cache_dir: $(ccache --show-config 2>/dev/null | awk -F'= *' '/(^| )cache_dir/{print $2; exit}')"
   ccache --show-stats 2>/dev/null | head -10 | sed 's/^/  /' >&2 || true
 }
 
