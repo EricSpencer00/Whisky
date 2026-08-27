@@ -43,16 +43,24 @@ mkdir -p "$LIB"
 cp -a "$src" "$LIB/Wine"
 log "installed Wine from $tarball"
 
-mvk="$LIB/MoltenVK/libMoltenVK.dylib"
-if [ -f "$mvk" ]; then
-  ln -sf "$mvk" "$LIB/Wine/lib/wine/x86_64-unix/libvulkan.1.dylib"
-  log "linked libvulkan.1.dylib -> $mvk"
+# A bundle built after this change already carries DXMT and the MoltenVK
+# symlink. Doing either step again replaces the bundle's DXMT with the upstream
+# release, which is the one without the cross-process presentation fixes.
+wine_unix="$LIB/Wine/lib/wine/x86_64-unix"
+if [ -e "$wine_unix/libvulkan.1.dylib" ] && [ -f "$wine_unix/winemetal.so" ]; then
+  log "bundle is self-contained; nothing to add"
 else
-  log "WARNING: $mvk missing; Vulkan will not initialise"
-fi
+  mvk="$LIB/MoltenVK/libMoltenVK.dylib"
+  if [ -f "$mvk" ]; then
+    ln -sf "$mvk" "$wine_unix/libvulkan.1.dylib"
+    log "linked libvulkan.1.dylib -> $mvk"
+  else
+    log "WARNING: $mvk missing; Vulkan will not initialise"
+  fi
 
-log "installing DXMT"
-"$script_dir/run-d3d11-probe.sh" dxmt-install
+  log "older bundle: installing DXMT separately"
+  "$script_dir/run-d3d11-probe.sh" dxmt-install
+fi
 
 log "verifying"
 "$script_dir/run-dosdev-probe.sh"
