@@ -60,6 +60,13 @@ from a prefix problem, and that is what produced the first real backtrace.
 - A Metal layer on such a child does not. `winemac.drv` only has a Cocoa view
   when this process owns the top-level window, so `get_win_data` has nothing to
   give.
+- **A window whose thread does not pump messages is never composited**, however
+  it is drawn into. This one cost hours: the child was created, parented,
+  visible, correctly placed and being blitted into every frame, and the window
+  stayed empty. Painting it red unconditionally also showed nothing, which is
+  what finally separated "our drawing is wrong" from "this window is not being
+  composited at all". DXMT presents from a render thread that never answers
+  messages, so the presentation window now owns a thread that does.
 - `wined3d` over MoltenVK cannot reach any usable feature level here
   (`None of the requested D3D feature levels is supported`), so D3D11 apps need
   DXMT. It is not optional.
@@ -89,7 +96,7 @@ from a prefix problem, and that is what produced the first real backtrace.
 | OpenTTD 14.1 | OpenGL | renders |
 | Unigine Heaven | D3D11 via DXMT | renders correctly, 3–19 FPS depending on the view |
 | SuperTuxKart 1.5 | OpenGL | runs, but sees OpenGL 2.1 and drops to reduced graphics |
-| Rockstar Games Launcher | D3D11 + CEF | initialises fully, UI window stays unpainted |
+| Rockstar Games Launcher | D3D11 + CEF | sign-in screen renders and holds |
 | GZDoom (Vulkan) | Vulkan on MoltenVK | renders and animates; red and blue are pinned at 255 |
 | GZDoom (OpenGL) | OpenGL | cannot run, see below |
 | D3D9 probe | D3D9 via wined3d | correct, shader model 3.0 |
