@@ -703,3 +703,84 @@ lot. It is a genuine intermittent defect but it is not a blocker, and it is not
 reproducible on demand, so there is nothing to bisect against yet. The comment
 in the prior session's `autostart` mod ("before CEF crashes at ~11s") suggests it
 was hit more often on the pre-fix bundle, where the process was already wedged.
+
+### 2026-08-27: the source patch is validated; CI feedback is 37 seconds
+
+BuildWine run 33028180731 succeeded and its bundle was installed and tested with
+no hand-patching anywhere. The patched `NtQueryDirectoryObject` compiles to what
+the binary patch did by hand:
+
+```asm
+4b52d: movb  %r8b, -0x110(%rbp)   ; restart stored as one byte
+4b537: cmpb  $0x0, -0x110(%rbp)   ; compared as a byte, was testl %r8d,%r8d
+4b540: movl  (%r9), %r13d         ; index = *context
+```
+
+On that bundle: `dosdev-probe` passes, D3D11 reports `featurelevel=0xb100` with
+`adapter=Apple M1 Max`, and BeamNG drives — 32.6, then 109.0, then 139.4 km/h,
+no crashes. The speed profile matches the hand-patched runs exactly. Frame rate
+was lower on this run (76-102) because the shader cache was cold; the level took
+30.4 s to load rather than 19.3 s.
+
+#### The bundle is not the whole stack
+
+Installing `Libraries.tar.gz` on its own drops two things and **fails quietly**,
+reporting feature level 9_3 rather than erroring:
+
+- `lib/wine/x86_64-unix/libvulkan.1.dylib`, the symlink to MoltenVK. `win32u`
+  dlopens that exact name from that exact directory and searches nowhere else.
+- `lib/wine/x86_64-unix/winemetal.so`, DXMT's unixlib, which `dxmt-install`
+  places there.
+
+`Scripts/install-bundle.sh` does the tarball, the symlink, DXMT, and both probes
+in one command. It takes a path or `--run-id <id>`.
+
+#### The reproducer is now deterministic
+
+`dosdev-probe` used to depend on whatever the stack happened to hold, so a clean
+run proved nothing. It now fills 256 KB of stack with `0xAA` before each call:
+
+| bundle | result |
+|---|---|
+| unpatched ntdll | 3/3 hung |
+| patched ntdll | 3/3 pass |
+
+15 seconds, no BeamNG, exit code 2 on failure. `./Scripts/run-dosdev-probe.sh`.
+
+#### CI
+
+`Checks.yml` runs on every push in about 40 seconds: shell scripts parse, probes
+compile, every patch still applies to the CrossOver tree, and the syscall patch
+lands both call sites. BuildWine stays the slow lane.
+
+It found a real problem on its first run: **Hack 18311 has never applied.** It
+was extracted against upstream wine-11.0, but we build from CrossOver's tree,
+which already contains CodeWeavers' own hack at `dlls/wined3d/directx.c:3518` —
+the identical code. Harmless, but `build-wine.sh` logged `WARN: may already be
+applied` and continued, so a patch that genuinely rotted would have looked the
+same and shipped silently. `apply_patch` now tests `-R` first: already-present is
+fine, applying is fine, anything else is a hard error.
+
+ccache was also doing nothing. Measured on run 33024070675:
+
+```
+Cacheable calls:    685 / 2133 (32.11%)
+  Hits:              57 /  685 ( 8.32%)
+    Direct:           0 /   57 ( 0.00%)
+Cache size (GB):  0.0 /  2.0 ( 1.42%)
+```
+
+28 MB stored after compiling all of Wine. Three causes, all fixed:
+
+1. `configure.ac` probes `x86_64-w64-mingw32-gcc` **before** the clang names for
+   i386/x86_64. llvm-mingw ships both spellings, so Wine picks the gcc-named
+   wrapper, and the ccache symlink set only covered the clang names — every
+   PE-side compile bypassed the cache.
+2. `CCACHE_DIR` was never exported, only interpolated into a log line. ccache
+   4.x writes to `~/Library/Caches/ccache` on macOS, which CI does not cache.
+3. Direct-mode hits were 0% because `-g` bakes absolute build paths into
+   objects; `CCACHE_BASEDIR` plus `compilercheck=content` fixes that.
+
+And `actions/cache` only writes on success, so run 33024070675 compiled all of
+Wine, failed a sanity check, and threw away 54 minutes. Now split into
+`cache/restore` and `cache/save` with `if: always()`, keyed on `WINE_ARCHS`.
