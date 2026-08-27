@@ -272,12 +272,13 @@ patch_source() {
     exit 1
   }
 
-  # dbghelp faults on a zero divisor while evaluating a DWARF expression, so any
-  # program that loads it for a crash handler dies at startup. GZDoom does.
+  # Backport: dbghelp faults on a zero divisor while evaluating a DWARF
+  # expression, so any program that loads it for a crash handler dies at
+  # startup. GZDoom does. Fixed upstream after the tree we build from.
   local dwarfdiv="$script_dir/patches/dbghelp-dwarf-divide-guard.patch"
   apply_patch "$dwarfdiv" "$wine_src" "dbghelp DWARF divide guard"
 
-  grep -q 'stack\[stk\] ? stack\[stk-1\] / stack\[stk\]' "$wine_src/dlls/dbghelp/dwarf.c" || {
+  grep -q 'Attempting to divide by zero' "$wine_src/dlls/dbghelp/dwarf.c" || {
     log "ERROR: DWARF divide guard missing from dwarf.c after patching"
     exit 1
   }

@@ -103,13 +103,19 @@ from a prefix problem, and that is what produced the first real backtrace.
 
 ## Bugs this turned up
 
-- **Wine's dbghelp divides by zero evaluating a DWARF expression.** Anything
-  that loads dbghelp for a crash handler dies at startup with
+- **dbghelp divides by zero evaluating a DWARF expression.** Anything that
+  loads dbghelp for a crash handler dies at startup with
   `Unhandled division by zero`. Our own build ships DWARF, so it trips on
-  itself. Fixed by `Scripts/patches/dbghelp-dwarf-divide-guard.patch`.
-- **`DW_OP_shra` was implemented as a division by `1 << n`.** That truncates the
-  wrong way for negative values and gives a zero divisor once `n` reaches the
-  width of an `int`. It is a shift.
+  itself; GZDoom is where it showed up. `DW_OP_shra` was separately implemented
+  as a division by `1 << n`, which truncates the wrong way for negative values
+  and gives a zero divisor once `n` reaches the width of an `int`. It is a
+  shift.
+
+  Upstream Wine already fixed both, after the CrossOver 26.1.0 tree we build
+  from. `Scripts/patches/dbghelp-dwarf-divide-guard.patch` is a backport of
+  their fix, not our own. Worth checking upstream before writing a patch — the
+  first version of this was a bespoke variant that would have diverged for no
+  reason.
 
 ## Capability map
 
