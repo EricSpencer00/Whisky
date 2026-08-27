@@ -11,6 +11,10 @@ than guessing. Each answers one question and nothing else.
 | `winapp.c` | Positive control: does in-process GDI reach the screen? |
 | `paintwin.c` | Does GDI drawing from *another* process reach the screen? (No — see below.) |
 | `d3dchild.c` | Does a second process presenting D3D11 into a foreign window reach the screen? |
+| `d3d9probe.c` | Does D3D9 work, and does a known colour survive to the screen? |
+| `d3d12probe.c` | Does D3D12 work, and at what resource binding tier? |
+| `focuswin.c` | Brings a window to the front so it can be captured. |
+| `winshot2.swift` | Captures one window through ScreenCaptureKit, on any Space. |
 
 Build with `make -C Scripts/probes`.
 
@@ -24,5 +28,12 @@ Build with `make -C Scripts/probes`.
 - A Metal layer on such a child does not: `winemac.drv` only has a Cocoa view
   when this process owns the top-level window.
 
-Together those are why DXMT presents cross-process swapchains by blitting into a
-child window it owns.
+- A window whose thread does not pump messages is never composited, however it
+  is drawn into.
+
+Together those are why DXMT presents a cross-process swapchain by blitting into
+a child window it owns, on a thread of its own that answers messages.
+
+`screencapture -l` returns a fully transparent image for a window on another
+Space, which reads as "the app drew nothing". `winshot2` is the check on that,
+and `imgstat` scores both so the difference is visible.
