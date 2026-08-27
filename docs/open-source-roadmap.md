@@ -683,8 +683,23 @@ render-to-texture never produces a frame (`rendered=0 requested=11`). Plates
 render blank. This is a separate HTML-to-texture path from the HUD overlay,
 which does work. Cosmetic, low priority.
 
-#### On the CEF crash
+#### On the CEF crash: 1 in 18 launches, not reproducible on demand
 
-The `ThreadPoolForegroundWorker` crash seen once in the earlier 5-run A/B did
-**not** recur in any of the six level-loading runs here. It is intermittent and
-appears tied to sitting on the main menu rather than to gameplay.
+The `ThreadPoolForegroundWorker` crash was chased deliberately — four launches
+left sitting on the main menu for 120 s each, mods and `startup.lua` moved
+aside. **Zero crashes.** Running total across this session:
+
+| scenario | runs | crashes |
+|---|---|---|
+| A/B, killed at 55 s | 5 | 1 |
+| gameplay, `-level` | 6 | 0 |
+| main menu, 120 s | 4 | 0 |
+| clean-bottle control | 3 | 0 |
+| **total** | **18** | **1** |
+
+So roughly 5 % of launches, and the earlier guess that it was tied to the main
+menu is **not** supported — the menu runs were the longest and cleanest of the
+lot. It is a genuine intermittent defect but it is not a blocker, and it is not
+reproducible on demand, so there is nothing to bisect against yet. The comment
+in the prior session's `autostart` mod ("before CEF crashes at ~11s") suggests it
+was hit more often on the pre-fix bundle, where the process was already wedged.
