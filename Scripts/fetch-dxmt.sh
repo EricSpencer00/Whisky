@@ -36,9 +36,9 @@ elif [ -n "${DXMT_RUN_ID:-}" ]; then
   if [ ! -f "$tarball" ]; then
     log "Downloading artifact from fork run $DXMT_RUN_ID"
     dl=$(mktemp -d)
-    gh run download "$DXMT_RUN_ID" --repo EricSpencer00/dxmt --dir "$dl"
-    found=$(find "$dl" -name '*builtin*.tar.gz' | head -1)
-    [ -n "$found" ] || { log "ERROR: no builtin tarball in run $DXMT_RUN_ID"; exit 1; }
+    gh run download "$DXMT_RUN_ID" --repo EricSpencer00/dxmt --dir "$dl" --pattern 'dxmt-*'
+    found=$(find "$dl" -name '*.tar.gz' | head -1)
+    [ -n "$found" ] || { log "ERROR: no tarball in run $DXMT_RUN_ID"; exit 1; }
     cp "$found" "$tarball"
   fi
 else
