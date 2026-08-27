@@ -18,6 +18,7 @@ BOTTLE="${BOTTLE:-}"
 TAG="app"
 OUT="${OUT:-$script_dir/../out/triage}"
 WAIT="${WAIT:-60}"
+CWD="${CWD:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -25,6 +26,7 @@ while [ $# -gt 0 ]; do
     --tag)    TAG="$2"; shift 2 ;;
     --out)    OUT="$2"; shift 2 ;;
     --wait)   WAIT="$2"; shift 2 ;;
+    --cwd)    CWD="$2"; shift 2 ;;
     --) shift; break ;;
     *) break ;;
   esac
@@ -44,7 +46,9 @@ export MVK_CONFIG_LOG_LEVEL="${MVK_CONFIG_LOG_LEVEL:-0}"
 "$WINE/bin/wineserver" -k 2>/dev/null; sleep 2
 pkill -9 -f wineserver 2>/dev/null; sleep 1
 
-started=$(date +%s)
+# Several games resolve their data relative to the working directory and abort
+# with a missing-file dialog when it is wrong.
+[ -n "$CWD" ] && cd "$CWD"
 "$WINE/bin/wine64" "$@" >"$wlog" 2>&1 &
 sleep "$WAIT"
 
