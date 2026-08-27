@@ -209,3 +209,35 @@ removing Wine's, with DXMT's own d3d12 not built in release.
 
 Upstream builds DXMT's d3d12 only in the debug configuration; the fork builds it
 in release. It remains the experimental part of DXMT, and a clear is not a game.
+
+## An overlay child window must be disabled, not transparent
+
+DXMT presents into a child window it owns, laid over the client area of a
+window in another process. That child must show pixels and nothing else. If it
+takes the mouse, the app underneath is dead.
+
+`WM_NCHITTEST` returning `HTTRANSPARENT` is the wrong tool. Measured across
+style combinations with `cursorchild`, against a forced null-cursor baseline:
+
+| child style | cursor | click reaches the window below |
+| --- | --- | --- |
+| plain | shown | no |
+| `HTTRANSPARENT` | none | no |
+| `WS_EX_TRANSPARENT` | shown | no |
+| `WS_EX_TRANSPARENT` + `HTTRANSPARENT` | none | no |
+| `WS_DISABLED` | shown | yes |
+
+`HTTRANSPARENT` routes no input and suppresses the class cursor, so the pointer
+disappears. `WS_DISABLED` is the only style that does the job.
+
+## Read a frozen window before you read the pixels
+
+A launcher that renders once and never updates looks identical to one that
+renders correctly. Screenshots cannot tell them apart, and a static UI draws no
+frames of its own, so "no change on hover" proves nothing.
+
+Count the presents instead. With `DXMT_PRESENT_COUNT` set, DXMT writes
+`frames=N` into the title of each presentation child, and `enumwin` reads it.
+That separates "the app stopped drawing" from "we stopped painting" in one
+look. It found that the Rockstar launcher's hidden sign-in browser kept
+presenting at 93 fps while the visible window sat at exactly 1075 frames.

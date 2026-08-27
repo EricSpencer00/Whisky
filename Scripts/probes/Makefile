@@ -1,7 +1,7 @@
 MINGW ?= x86_64-w64-mingw32-gcc
 MINGW32 ?= i686-w64-mingw32-gcc
 MINGW_CFLAGS ?= -O1
-WINEXE = enumwin.exe winapp.exe paintwin.exe d3dchild.exe d3d9probe.exe d3d12probe.exe d3d12clear.exe d3d11probe.exe d3d11probe32.exe d3d9probe32.exe sendkeys.exe focuswin.exe
+WINEXE = enumwin.exe winapp.exe paintwin.exe d3dchild.exe d3d9probe.exe d3d12probe.exe d3d12clear.exe d3d11probe.exe d3d11probe32.exe d3d9probe32.exe sendkeys.exe focuswin.exe cursorinfo.exe cursorchild.exe clickat.exe classcur.exe dwell.exe
 NATIVE = imgstat winshot
 
 all: $(WINEXE) $(NATIVE)
@@ -11,6 +11,11 @@ winapp.exe: winapp.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -lgdi32 -luser32
 paintwin.exe: paintwin.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -lgdi32 -luser32
 sendkeys.exe: sendkeys.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -luser32
 focuswin.exe: focuswin.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -luser32
+cursorinfo.exe: cursorinfo.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -luser32
+cursorchild.exe: cursorchild.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -luser32 -lgdi32
+clickat.exe: clickat.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -luser32
+classcur.exe: classcur.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -luser32
+dwell.exe: dwell.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -luser32
 d3d11probe.exe: d3d11probe.c ; $(MINGW) $(MINGW_CFLAGS) -o $@ $< -ld3d11 -ldxgi -luser32 -luuid
 d3d11probe32.exe: d3d11probe.c ; $(MINGW32) $(MINGW_CFLAGS) -o $@ $< -ld3d11 -ldxgi -luser32 -luuid
 d3d9probe32.exe: d3d9probe.c ; $(MINGW32) $(MINGW_CFLAGS) -o $@ $< -ld3d9 -lgdi32 -luser32

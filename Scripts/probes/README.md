@@ -43,3 +43,29 @@ a child window it owns, on a thread of its own that answers messages.
 `screencapture -l` returns a fully transparent image for a window on another
 Space, which reads as "the app drew nothing". `winshot2` is the check on that,
 and `imgstat` scores both so the difference is visible.
+
+## Input and cursor
+
+`cursorinfo` reports the cursor handle, the window under the pointer, and the
+class. `dwell` samples the same over four seconds and also prints the
+foreground window. `classcur` walks the parent chain and prints each class
+cursor. `clickat` parks the pointer over a reset point, moves to a target,
+reads the cursor, then clicks.
+
+Read the cursor against a baseline. The cursor is sticky global state: a window
+that never answers `WM_SETCURSOR` leaves whatever the last window set, so a
+reading with no baseline says nothing. Park over a window with a null class
+cursor first. `winapp nopaint` is one.
+
+Wine has no foreground window while another macOS app is in front, and
+Chromium sets no cursor until its window is active. A null cursor measured from
+a terminal is not a bug. Click the window first, then measure.
+
+`cursorchild` builds a cross-process overlay child with a chosen style, so the
+styles can be compared directly:
+
+    cursorchild parent
+    cursorchild child <parent-hwnd-hex> <flags>
+
+Flags are `t` HTTRANSPARENT, `x` WS_EX_TRANSPARENT, `n` WS_EX_NOACTIVATE,
+`d` WS_DISABLED, `c` class cursor.
