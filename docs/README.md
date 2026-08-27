@@ -9,8 +9,17 @@ background or record.
 | file | what it is |
 |---|---|
 | [foss-bundle-usage.md](foss-bundle-usage.md) | install, verify, run apps, known limitations |
+| [app-triage.md](app-triage.md) | how to find where an app breaks, the capability map, what works today |
 | [open-source-roadmap.md](open-source-roadmap.md) | the full record, newest sections last |
 | [upstream-status.md](upstream-status.md) | the syscall-argument bug, and why it is not filed upstream |
+
+## What runs today
+
+BeamNG.drive plays. Steam's store and library work. The Rockstar Games Launcher
+reaches its sign-in screen. Cave Story, OpenTTD, SuperTuxKart and GZDoom all
+run. D3D9, D3D11 and D3D12 each create a device and present the colour asked
+for, in both word sizes. [app-triage.md](app-triage.md) has the measurements and
+the failures.
 
 Also `.claude/skills/wine-app-triage/` — read it before debugging an app that
 will not start.
