@@ -108,3 +108,30 @@ not help.
 - **Apple is removing Rosetta 2.** macOS 27 (Sept 2026) still supports it but
   uninstalls it on upgrade; macOS 28 (fall 2027) largely removes it. Everything
   here is x86_64 under Rosetta. Tracking issue: #20.
+
+## Running apps
+
+Each bottle gets a runner under `<bottle>/tools/`. It lives in the bottle, not
+the Wine bundle, so replacing the bundle does not remove it:
+
+```sh
+./Scripts/install-bottle-tools.sh [bottle]
+
+<bottle>/tools/run.sh 'C:\path\to\app.exe'      # launch, detached
+WAIT=30 <bottle>/tools/run.sh 'C:\app.exe'      # block until it exits
+TRACE=server <bottle>/tools/run.sh 'C:\app.exe' # with a WINEDEBUG preset
+<bottle>/tools/stop.sh                          # stop everything in the bottle
+```
+
+Use it rather than calling `wine64` directly. It handles three things that are
+easy to get wrong:
+
+- `DYLD_FALLBACK_LIBRARY_PATH` is exported inside the script. macOS strips
+  `DYLD_*` when it execs a SIP-protected binary such as `/usr/bin/nohup`, and
+  Wine then cannot load `libfreetype.6.dylib` and renders no text at all.
+- `MVK_CONFIG_LOG_LEVEL=0`, otherwise every log starts with 153 lines of Vulkan
+  extensions and real errors are buried.
+- `WINEDEBUG` is read when `wineserver` starts, so `TRACE=` kills any stale one
+  first. Without that the trace is silently empty and looks like a clean run.
+
+When an app misbehaves, see the `wine-app-triage` skill in `.claude/skills/`.
