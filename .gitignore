@@ -90,3 +90,7 @@ fastlane/test_output
 # https://github.com/johnno1962/injectionforxcode
 
 iOSInjectionProject/
+out/triage/
+Scripts/probes/*.exe
+Scripts/probes/imgstat
+Scripts/probes/winshot
