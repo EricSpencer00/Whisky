@@ -480,6 +480,14 @@ PLIST
   mkdir -p "$stage/Libraries/DXVK"
   cp -R "$OUT_DIR/DXVK"/* "$stage/Libraries/DXVK/"
 
+  # Fetch + bundle the Vulkan loader (libvulkan.1.dylib). MoltenVK alone is
+  # the ICD; without the loader, Wine's winevulkan.so dlopen fails at startup
+  # and the entire wined3d-vulkan / DXVK path silently no-ops. See
+  # docs/phase1m-libvulkan-findings.md for the diagnosis.
+  log "Fetching Vulkan loader"
+  OUT_DIR="$OUT_DIR" WORK_DIR="$WORK_DIR" bash "$script_dir/fetch-vulkan-loader.sh"
+  cp "$OUT_DIR/MoltenVK/libvulkan.1.dylib" "$stage/Libraries/MoltenVK/libvulkan.1.dylib"
+
   # Ad-hoc codesign so the unsigned wine binaries don't get SIGKILL'd by
   # macOS hardened runtime at launch. Users who have a Developer ID should
   # re-sign with their own identity after download; ad-hoc is enough for
