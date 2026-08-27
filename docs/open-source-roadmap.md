@@ -2,7 +2,16 @@
 
 **Mission:** enable open-source gaming on macOS without CrossOver.
 
-**Status as of 2026-04-18:** No pure open-source stack reaches a playable state for BeamNG.drive on M1 Max / macOS 26. Gaps are specific and fixable. This doc lists what works, what's blocking, and what needs building.
+**Status as of 2026-08-26: PLAYABLE.** BeamNG.drive 0.38.5 runs on a fully
+open-source stack on M1 Max / macOS 26 — Wine 11 built from CodeWeavers' LGPL
+source plus DXMT (LGPL-2.1). No CrossOver, no D3DMetal, no Game Porting Toolkit,
+nothing paid and nothing non-redistributable. Measured 108-128 FPS at 1280x720
+driving a vehicle in Gridmap V2. See the 2026-08-26 sections at the end of this
+document for how, and for what is still broken.
+
+The sections below are kept in chronological order, including the wrong turns.
+Several early conclusions were later disproved — each is corrected in place, but
+**read the last four sections first**; they supersede the 2026-04 analysis.
 
 ## What we've tested empirically
 
@@ -99,7 +108,10 @@ Once the MVP launches a D3D11 app to a visible window, iterate on the specific b
 
 ## Current playable state
 
-**None on open source alone.** CrossOver-with-D3DMetal gets the closest playable experience today (visible window, reaches main loop), but it's paid and the UI doesn't paint. The open-source plan above is the path out.
+> **SUPERSEDED — this section describes the state on 2026-04-18.**
+> As of 2026-08-26 the open-source stack is playable; see the end of this file.
+
+*(2026-04-18)* **None on open source alone.** CrossOver-with-D3DMetal gets the closest playable experience today (visible window, reaches main loop), but it's paid and the UI doesn't paint. The open-source plan above is the path out.
 
 ## 2026-08-22 session: DXVK 3.0.2 tested — the NT-handle plan is dead on macOS; wined3d-vk reaches device creation but caps at FL9
 
