@@ -43,17 +43,21 @@ gcc-mingw-w64 for x86_64; llvm-mingw appears only in the arm64 job
 llvm-mingw is possible per their docs but untested by them. Rosetta 2 on Apple
 Silicon is not tested by them at all.
 
-**3. Prior art not cleared.** No matching report found, but
-`bugs.winehq.org` search returns 403 to automated fetches, and a Wine merge
-request branch `mr/syscalls-sysv_abi` (tmatthies) exists that may already be
-reworking this exact boundary. It is behind Anubis and was not read.
+**3. Prior art only partly cleared.** No matching report found, and the one
+adjacent branch turned out not to be it: `tmatthies/wine mr/syscalls-sysv_abi`
+is five commits from Dec 2022 (`include: Add SYSCALL calling convention`,
+`ntdll/win32u: Make syscalls use the SYSCALL calling convention`,
+`ntdll: Make syscall functions sysv_abi on x64`) which formalise the unix side
+as explicitly `sysv_abi`. It never landed — 23,360 commits behind — and it does
+not address argument narrowing. But `bugs.winehq.org` search returns 403 to
+automated fetches, so the tracker has not actually been searched.
 
 ## What would close it
 
-1. Read `https://gitlab.winehq.org/tmatthies/wine/-/tree/mr/syscalls-sysv_abi`
-   in a real browser. If it already changes the unix side's ABI, there is
-   nothing to file.
-2. Search `bugs.winehq.org` by hand for the dispatcher and argument extension.
+1. Search `bugs.winehq.org` by hand for the dispatcher and argument extension.
+2. Check whether upstream considers x86_64 PE + llvm-mingw supported. The macOS
+   section of their README asks for "clang 3.8 ... and mingw-w64 v8", which is
+   ambiguous about which mingw.
 3. Build stock upstream master with `--with-mingw=clang` on x86_64 and reproduce
    the hang with no CrossOver tree and no local patches.
 
