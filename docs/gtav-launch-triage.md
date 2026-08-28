@@ -92,3 +92,40 @@ Nail the metadata parse mechanism (Wine-side, same class as the WQL fix in
 the read path for a single `.rgl`, to find the API whose Wine behaviour differs
 from Windows. With the API in hand this becomes a real upstream issue and
 probably a small patch. Not security work — ordinary app-compat.
+
+## BREAKTHROUGH 2026-08-27: the anti-tamper crash is CW HACK 19355
+
+The `movl $0, 0` abort at 0x141349e7c is NOT anti-tamper. It is the nvapi crash
+CrossOver already documents:
+
+    dlls/wined3d/directx.c:
+    /* CW HACK 19355: GTA 5 crashes on launch trying to init nvapi if it sees
+       an NVIDIA GPU */
+    if (!lstrcmpW(module_exe, L"GTA5.exe") && vendor_id == HW_VENDOR_NVIDIA)
+        { vendor_id = HW_VENDOR_AMD; device_id = CARD_AMD_RADEON_RX_480; }
+
+CrossOver forces AMD when GTA5 sees NVIDIA. That hack lives in wined3d, but we
+render through DXMT, so it never runs for us. DXMT ships nvapi64.dll (1.9 MB)
+and reports NVIDIA, so GTA5 initialises nvapi and writes to null.
+
+Fix that works: disable nvapi so GTA5 cannot take the NVIDIA codepath.
+
+    reg add HKCU\Software\Wine\DllOverrides /v nvapi64 /t REG_SZ /d "" /f
+    reg add HKCU\Software\Wine\DllOverrides /v nvngx   /t REG_SZ /d "" /f
+
+plus a dxmt.conf beside GTA5.exe spoofing AMD:
+
+    dxgi.customVendorId = 1002
+    dxgi.customDeviceId = 67df
+    dxgi.customDeviceDesc = AMD Radeon RX 480
+
+With nvapi disabled the crash at 0x141349e7c is GONE (0 crashes across repeats;
+previously died at ~70s every time). GTA5 now reaches DXMT init (feature level
+11_0), WMI and cdrom hardware queries, then exits cleanly with no window when
+run standalone — consistent with needing the launcher's Social Club
+entitlement, not a crash. Next: launch through the launcher (PLAY) so the
+entitlement handshake completes, with the nvapi override now global in the
+prefix.
+
+The earlier "movl $0,0 is deliberate anti-tamper" conclusion was WRONG. It is a
+null write from failed nvapi init, exactly what CW HACK 19355 prevents.
