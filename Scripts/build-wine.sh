@@ -267,6 +267,12 @@ patch_source() {
   local boolabi="$script_dir/patches/ntdll-boolean-syscall-arg-abi.patch"
   apply_patch "$boolabi" "$wine_src" "BOOLEAN syscall-argument ABI fix"
 
+  # WQL compares a CIM_STRING property against an unquoted integer literal as
+  # pointer-vs-integer, so `WHERE DeviceId=0` never matches and the query
+  # returns no rows. See docs/app-triage.md.
+  local wql="$script_dir/patches/wbemprox-string-int-compare.patch"
+  apply_patch "$wql" "$wine_src" "WQL string/int comparison"
+
   grep -q 'syscall_bool_arg( restart )' "$wine_src/dlls/ntdll/unix/sync.c" || {
     log "ERROR: syscall_bool_arg missing from sync.c after patching"
     exit 1
