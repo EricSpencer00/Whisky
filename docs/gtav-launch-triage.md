@@ -216,7 +216,18 @@ remain correctly ruled out, they were just aimed at the wrong thing.
 - The WQL string/int fix in `Scripts/patches/wbemprox-string-int-compare.patch`
   is a real Wine bug fix, independent of this game.
 
-## Mods: ScriptHookV does not work here (2026-08-28)
+## Mods: they DO work — the crash was BattlEye, not ScriptHookV (corrected 2026-08-28)
+
+**The earlier "ScriptHookV breaks it" conclusion below was WRONG.** Controlled
+test: the `Unhandled privileged instruction at 0x100B776F7` reproduces with NO
+mods at all (pure vanilla), so it is not ScriptHookV. It comes from BattlEye
+(`GTA5_BE.exe`), which the launcher runs unless `-safemode` is present. Add
+`-safemode` to `commandline.txt` and the game launches with ScriptHookV,
+Menyoo and the native trainer loaded, no crash and no Safe-Mode click.
+
+Original (incorrect) section kept below for the record.
+
+### (superseded)
 
 Installing the usual single-player stack (ScriptHookV + its dinput8 ASI loader,
 Menyoo, NativeTrainer) stops the game launching. The failure is distinct from
@@ -266,3 +277,21 @@ Fix — with the game NOT running, since it rewrites the file on exit:
 1600x900 and 1920x1080 are also fine. Once the game is running, change
 resolution in-game (Settings -> Graphics) instead of editing the file, or the
 edit is overwritten at exit.
+
+## Cursor-free launch onto a chosen monitor (2026-08-28)
+
+The whole flow runs without touching the mouse:
+
+- `commandline.txt` = `-nobattleye -noBE -safemode`  (the `-safemode` is what
+  skips the BattlEye crash on the first launch).
+- Trigger the launch by running `PlayGTAV.exe` through `tools/run.sh`; the
+  launcher picks it up over its own pipe (`gamepipemtl` "Received command from
+  another instance"). No PLAY click.
+- Dismiss any "already running" dialog with `Scripts/probes/sendkeys.exe Error 0D`.
+- Move the game window to another display with `Scripts/probes/movewin.exe`
+  (posts SetWindowPos, cursor never moves). Wine's global coordinates mirror
+  the macOS arrangement, so an external monitor at macOS origin (2056,1329)
+  takes window x >= 2056.
+
+Set the in-game resolution to fit the target monitor (1600x900 for a 1080p
+external) in settings.xml while the game is stopped, or in-game afterwards.
