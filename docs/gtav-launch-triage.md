@@ -44,11 +44,27 @@ The supported path is to let the launcher start the game. It cannot:
 launch worker cannot build the exe path and PLAY dies before `Launch Path`.
 
 The metadata files are the launcher's own cache in
-`AppData/Local/Rockstar Games/Launcher/metadata/*.rgl`: magic `RGLM`
-(52 47 4c 4d), version 1, then a 4-byte type/flags word (not a length —
-values 0x630, 0x430, 0x1e00 do not match file sizes). Clearing the cache and
-re-downloading does not help: fresh files fail identically, so it is not cache
-corruption.
+`AppData/Local/Rockstar Games/Launcher/metadata/*.rgl`. Format, decoded:
+80-byte header (magic `RGLM` = 52 47 4c 4d; version 1; **offset 8 = payload
+length = filesize − 80**, exact for all files; offset 16 = a unix timestamp on
+the two gta5 files, else zero; rest zero) followed by an AES-256-CBC encrypted
+payload. The filename is the SHA-256 of the whole file, and all files verify —
+so the cache is content-addressed and intact, NOT corrupt or truncated.
+
+The launcher decrypts each file at startup: BCrypt AES-256-CBC with a 32-byte
+static key from Launcher.exe and a zero IV, then SHA-256. Traced under this
+Wine, every BCryptDecrypt succeeds with no error and there is no
+BCryptVerifySignature. So "error 2" is not a crypto or signature failure, and
+the decrypted files are valid.
+
+"error 2" most likely means `ERROR_FILE_NOT_FOUND (2)`, which fits the
+immediate follow-on `LAUNCHER_ERR_NO_GAME_PATH 102` / "Can't find game
+location". Traced `+file` across a PLAY: the verification worker opens game
+files through the sparse-bundle symlink fine (including deep DLC paths), and the
+gamelaunch worker does NO file ops before failing — so the failure is internal
+launcher state, not a filesystem lookup. `InstallFolder` in HKLM is read
+successfully at startup. The parse mechanism is still not pinned to a Wine API;
+a clean repro of the failing in-memory lookup at PLAY is the missing piece.
 
 Traced `+bcrypt,+crypt32` across all launcher pids through a parse failure:
 heavy `BCryptHashData` / `BCryptGenerateSymmetricKey` / `BCryptGenerateKeyPair`
