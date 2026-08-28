@@ -295,3 +295,48 @@ The whole flow runs without touching the mouse:
 
 Set the in-game resolution to fit the target monitor (1600x900 for a 1080p
 external) in settings.xml while the game is stopped, or in-game afterwards.
+
+## Story-mode load: hang vs slow disk (2026-08-28)
+
+The game boots to the menu and enters Story Mode, then appears to load forever.
+Two distinct causes, one cheap fix and one expensive, plus a way to tell them apart.
+
+### Measured: the LaCie is a spinning USB drive, terrible at random I/O
+
+    sequential read:  98 MB/s   (fine)
+    random 16K read:  51 IOPS, 0.8 MB/s   (internal SSD: 5844 IOPS, 91 MB/s)
+
+GTA V streams thousands of scattered assets from its RPF archives at story-mode
+load. At 0.8 MB/s random that is effectively endless. 53 GB of the 119 GB is
+GTA Online DLC (50 `mp*` dlcpacks) that story mode never streams, so the
+story-mode working set is ~66 GB and fits the ~111 GB free internal SSD.
+Expensive fix, kept as fallback: copy the game to internal SSD excluding
+`update/x64/dlcpacks/mp*`, symlink those back to the sparse bundle (story mode
+reads only their headers).
+
+### Cheaper first: sync primitive + DXMT map guard
+
+Research (Heroic #2618, wine-tkg #471): GTA V frozen at "Entering Story Mode" on
+macOS is a documented sync-primitive / audio-init hang, not graphics. This Wine
+uses WINEMSYNC and our `tools/run.sh` set no sync env, so msync was OFF.
+
+Applied:
+- `tools/play-gtav.sh` launches with `WINEMSYNC=1` (Whisky's tested default).
+- `dxmt.conf` now sets `d3d11.ignoreMapFlagNoWait = True` (guards a
+  DXGI_ERROR_WAS_STILL_DRAWING Map hang) and `d3d11.maxFeatureLevel = 11_0`.
+- Watch for a macOS microphone-permission prompt for the wine binary; per
+  Heroic #2618 granting it releases the audio-init block.
+
+### The discriminator
+
+While it "loads", run:
+
+    sudo fs_usage -w -f filesys | grep -i "Grand Theft"
+
+Steady reads = it is loading (slow disk; wait, or move to SSD). Idle = it is
+hung (the sync/audio path; msync + the dxmt map guard target this).
+
+Mods are fine: ScriptHookV logs `INIT: Success`; Menyoo/NativeTrainer load. The
+earlier privileged-instruction fault did not recur after msync/config changes
+were staged — unproven whether it was mods or sync, test with dinput8 removed if
+it returns.
