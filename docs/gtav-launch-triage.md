@@ -215,3 +215,33 @@ remain correctly ruled out, they were just aimed at the wrong thing.
   our runtime env differs from CrossOver's.
 - The WQL string/int fix in `Scripts/patches/wbemprox-string-int-compare.patch`
   is a real Wine bug fix, independent of this game.
+
+## Mods: ScriptHookV does not work here (2026-08-28)
+
+Installing the usual single-player stack (ScriptHookV + its dinput8 ASI loader,
+Menyoo, NativeTrainer) stops the game launching. The failure is distinct from
+every other crash in this document:
+
+    wine: Unhandled privileged instruction at address 0x0000000100B776F7
+
+That address is outside GTA5.exe's image base (0x140000000), so it is in an
+injected module, i.e. ScriptHookV. A privileged-instruction fault is what
+happens when injected code executes an instruction Wine does not emulate.
+ScriptHookV is a closed-source binary that hooks the game far below the Win32
+API, so this is not something a DLL override or config can fix.
+
+Everything that depends on it falls with it: Menyoo, NativeTrainer and
+ScriptHookVDotNet are all ASI plugins loaded by ScriptHookV.
+
+Setup used, for the record — it is correct, it just does not survive injection:
+- files beside GTA5.exe: ScriptHookV.dll, dinput8.dll, *.asi
+- `HKCU\Software\Wine\AppDefaults\GTA5.exe\DllOverrides` dinput8 = native,builtin
+  (scoped per-app; a global dinput8 override disturbs the launcher itself)
+
+Reverting: move the mod files to `_mods_disabled/` beside the game and delete
+the dinput8 override. The game then launches normally again. Mods are kept in
+`~/gta5-mods-staging` with `install-mods.sh`.
+
+Untested ideas if someone picks this up: an older ScriptHookV matching
+1.0.3889.0, or checking whether anyone has ScriptHookV working under Wine at
+all. Do not assume it is a configuration problem.
