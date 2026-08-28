@@ -129,3 +129,22 @@ prefix.
 
 The earlier "movl $0,0 is deliberate anti-tamper" conclusion was WRONG. It is a
 null write from failed nvapi init, exactly what CW HACK 19355 prevents.
+
+## CORRECTION 2026-08-27: the nvapi "fix" was a false positive
+
+The claim above that disabling nvapi removes the crash is WRONG. Rigorous retest:
+3/3 trials crash at 0x141349e7c with `WINEDLLOVERRIDES=nvapi64=;nvngx=;nvcuda=`
+active and dxmt.conf spoofing AMD. Each dies at ~72s, identical to baseline.
+
+The earlier "0 crashes" reading came from a single run watched for too short a
+window — the process was still alive at the moment I checked, and I concluded
+"fixed" before it reached the ~72s crash point. Classic premature conclusion
+from an uncontrolled single sample.
+
+What is actually true: the crash always follows the same sequence — DXMT init
+(feature level 11_0) -> wbemprox WMI queries -> cdrom DeviceIoControl -> crash
+at 0x141349e7c. CW HACK 19355 (nvapi-on-NVIDIA) is a real CrossOver hack and
+may still be *a* factor, but disabling nvapi is NOT sufficient to prevent the
+crash. The nvapi theory is not proven and probably not the cause.
+
+Still unsolved. Do not repeat the nvapi-disable path expecting a fix.
