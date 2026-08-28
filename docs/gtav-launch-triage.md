@@ -340,3 +340,50 @@ Mods are fine: ScriptHookV logs `INIT: Success`; Menyoo/NativeTrainer load. The
 earlier privileged-instruction fault did not recur after msync/config changes
 were staged — unproven whether it was mods or sync, test with dinput8 removed if
 it returns.
+
+## Story-mode entry hang — unresolved as of 2026-08-28
+
+Vanilla GTA V boots, renders the menus and the loading screen, reaches
+"Entering Story Mode", and hangs there. It never enters the world. Measured
+across configurations:
+
+| config | symptom |
+|---|---|
+| audio on (default) | frozen on load art, 0% CPU — audio/mic init block |
+| audio off (`HKCU\...\Drivers Audio=""`) | loading-tip cards cycle, then static ~18% CPU spin |
+| game on LaCie (0.8 MB/s random) | same hang, disk not the cause |
+| game on internal SSD (40 MB/s random) | same hang — SSD did not fix it |
+| WINEMSYNC=1 | did not fix it |
+| dxmt.conf ignoreMapFlagNoWait | did not fix it |
+
+So the blocker is the documented GTA-V-on-Wine-macOS "Entering Story Mode"
+freeze (Heroic #2618, wine-tkg #471), not graphics, disk, or DXMT. The
+audio-on freeze at 0% CPU matches an audio/microphone-init block: macOS TCC
+gates mic access and a background wine process gets no prompt to grant it.
+Disabling audio moves the hang rather than clearing it (GTA V expects an audio
+subsystem).
+
+### What the SSD migration DID achieve (kept)
+
+Story-mode content (66 GB) now lives on the internal SSD at
+`~/Games/Grand Theft Auto V Legacy`; the 53 GB of GTA Online `mp*` dlcpacks stay
+on the LaCie sparse bundle, symlinked back in. Random read went 0.8 -> 40 MB/s.
+The bottle's `C:` path points at the SSD copy. This is the right layout for when
+the story-mode hang is solved.
+
+### Untried remedies for next time (documented, in order)
+
+1. **Microphone permission.** Grant the wine binary / its parent app Microphone
+   access in System Settings > Privacy & Security > Microphone, then launch with
+   audio ON. Per Heroic #2618 this released the identical freeze. Needs a GUI
+   click; cannot be scripted (TCC is SIP-protected).
+2. **fsync/esync build.** This Wine only has WINEMSYNC. wine-tkg #471 reports
+   GTA V loads story mode with fsync but hangs with esync — the sync primitive
+   matters. A Wine with a different primitive may pass.
+3. **Read the CodeWeavers "GTA V stuck on loading" tip page** (403 to fetchers;
+   open in a browser).
+
+Mods work up to injection: ScriptHookV logs INIT: Success, but its injected
+code hits a privileged instruction (0x100B776F7) under Rosetta and crashes the
+game. Mods are parked in `_mods_disabled/`; keep them out until story mode
+itself loads.
