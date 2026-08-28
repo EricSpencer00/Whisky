@@ -245,3 +245,24 @@ the dinput8 override. The game then launches normally again. Mods are kept in
 Untested ideas if someone picks this up: an older ScriptHookV matching
 1.0.3889.0, or checking whether anyone has ScriptHookV working under Wine at
 all. Do not assume it is a configuration problem.
+
+## Window is enormous on a Retina display
+
+On first run GTA V picks a resolution from the display and writes
+`Documents/Rockstar Games/GTA V/settings.xml` with, on a 3456x2234 Retina
+panel:
+
+    <ScreenWidth value="1728" /> <ScreenHeight value="1117" /> <Windowed value="0" />
+
+1728x1117 is exactly half the panel, i.e. the logical point size, and fullscreen
+then scales it back up by the Retina factor. The window ends up roughly 4x
+screen size and unusable.
+
+Fix — with the game NOT running, since it rewrites the file on exit:
+
+    <ScreenWidth value="1280" /> <ScreenHeight value="720" />
+    <Windowed value="1" /> <RefreshRate value="60" />
+
+1600x900 and 1920x1080 are also fine. Once the game is running, change
+resolution in-game (Settings -> Graphics) instead of editing the file, or the
+edit is overwritten at exit.
