@@ -2,6 +2,8 @@
 #
 # Installs a BuildWine bundle and the two things it does not contain.
 #
+#   ./Scripts/install-bundle.sh --release            # latest published release
+#   ./Scripts/install-bundle.sh --release wine-v26.1.0
 #   ./Scripts/install-bundle.sh Libraries.tar.gz
 #   ./Scripts/install-bundle.sh --run-id 33028180731
 #   ./Scripts/install-bundle.sh --no-verify Libraries.tar.gz
@@ -25,8 +27,28 @@ log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 verify=1
 [ "${1:-}" = "--no-verify" ] && { verify=0; shift; }
 
+RELEASES="${RELEASES:-https://github.com/EricSpencer00/Whisky/releases}"
+
 tarball=""
 case "${1:-}" in
+  # The release is the path for someone who just wants to play a game: no gh,
+  # no login, and the checksum is published next to the tarball.
+  --release)
+    base="$RELEASES/latest/download"
+    [ -n "${2:-}" ] && base="$RELEASES/download/$2"
+    tmp=$(mktemp -d)
+    log "downloading ${2:-latest} release"
+    curl -fL --retry 3 -o "$tmp/Libraries.tar.gz" "$base/Libraries.tar.gz"
+    if curl -fsL -o "$tmp/sha256" "$base/Libraries.tar.gz.sha256"; then
+      want=$(awk '{print $1}' "$tmp/sha256")
+      got=$(shasum -a 256 "$tmp/Libraries.tar.gz" | awk '{print $1}')
+      [ "$want" = "$got" ] || { echo "checksum mismatch: $got != $want" >&2; exit 1; }
+      log "checksum ok"
+    else
+      log "WARNING: no published checksum for this release"
+    fi
+    tarball="$tmp/Libraries.tar.gz"
+    ;;
   --run-id)
     [ -n "${2:-}" ] || { echo "usage: $0 --run-id <id>" >&2; exit 1; }
     tmp=$(mktemp -d)
@@ -34,7 +56,7 @@ case "${1:-}" in
     gh run download "$2" --repo EricSpencer00/Whisky --dir "$tmp"
     tarball=$(find "$tmp" -name 'Libraries.tar.gz' | head -1)
     ;;
-  "") echo "usage: $0 <Libraries.tar.gz> | --run-id <id>" >&2; exit 1 ;;
+  "") echo "usage: $0 --release [tag] | <Libraries.tar.gz> | --run-id <id>" >&2; exit 1 ;;
   *)  tarball="$1" ;;
 esac
 [ -f "$tarball" ] || { echo "no tarball at $tarball" >&2; exit 1; }
