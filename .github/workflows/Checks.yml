@@ -177,5 +177,5 @@ jobs:
         # fails when the probe produces no result at all, so a level below 11_1
         # is reported, not treated as a failure.
         env:
-          WINEPREFIX: /tmp/ci-bottles/probe
+          WINEPREFIX: ${{ env.BOTTLES }}/probe
         run: ./Scripts/run-d3d11-probe.sh probe
