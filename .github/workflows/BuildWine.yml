@@ -149,6 +149,19 @@ jobs:
         run: |
           shasum -a 256 out/Libraries.tar.gz | tee out/Libraries.tar.gz.sha256
 
+      - name: Run the probes against the built bundle
+        # Checks.yml only compiles the probes. Compiling dosdev-probe.c proves
+        # nothing about the bundle — the BOOLEAN syscall-argument bug lives in
+        # ntdll, so it only shows up when the probe runs. install-bundle.sh
+        # installs this tarball, boots a bottle and runs both probes; the
+        # dosdev one is deterministic and takes about 15 seconds.
+        #
+        # This runs before the release step on purpose, so a bundle that hangs
+        # is never published.
+        run: |
+          brew install mingw-w64
+          ./Scripts/install-bundle.sh out/Libraries.tar.gz
+
       - name: Upload tarball as run artifact
         uses: actions/upload-artifact@v5
         with:
