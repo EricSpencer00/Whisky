@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh workflow list:*)",
+      "Bash(gh release list:*)",
+      "Bash(gh release view:*)",
+      "Bash(gh release download:*)",
+      "Bash(bash -n:*)",
+      "Bash(x86_64-w64-mingw32-gcc:*)",
+      "Bash(./Scripts/run-dosdev-probe.sh:*)",
+      "Bash(./Scripts/run-d3d11-probe.sh probe)",
+      "Bash(./Scripts/triage-app.sh:*)"
+    ]
+  }
+}

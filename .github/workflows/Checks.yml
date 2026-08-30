@@ -3,7 +3,10 @@ name: Checks
 # BuildWine takes 60-90 minutes. Almost everything that actually breaks between
 # builds is cheap to catch: a patch that no longer applies against the CrossOver
 # tree, a shell script that does not parse, a probe that does not compile.
-# This runs on every push so that feedback arrives in about two minutes.
+# The `checks` job runs on every push and reports in about two minutes.
+#
+# The `probes` job is the one that runs a probe against a real bundle. It is
+# slower and needs macOS, so it is a separate job and does not delay `checks`.
 
 on:
   push:
@@ -32,13 +35,15 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-mingw-w64-x86-64
 
       - name: Probes compile
+        # One link line for every probe. mingw import libraries only pull in the
+        # symbols a probe references, so listing them all costs nothing and
+        # stops a new probe from failing here because it needs -lgdi32.
         run: |
           fail=0
           for f in $(git ls-files 'Scripts/*.c'); do
             echo "--- $f"
             x86_64-w64-mingw32-gcc -O1 -Wall -o /tmp/$(basename "$f" .c).exe "$f" \
-              -lntdll -ld3d11 -ldxgi -luuid 2>/tmp/err.txt \
-              || x86_64-w64-mingw32-gcc -O1 -Wall -o /tmp/$(basename "$f" .c).exe "$f" -lntdll 2>/tmp/err.txt \
+              -lntdll -ld3d11 -ld3d12 -ld3d9 -ldxgi -luuid -lgdi32 2>/tmp/err.txt \
               || { echo "::error file=$f::failed to compile"; cat /tmp/err.txt; fail=1; }
           done
           exit $fail
@@ -97,3 +102,80 @@ jobs:
           grep -q 'syscall_bool_arg( restart )' dlls/ntdll/unix/sync.c \
             && grep -q 'syscall_bool_arg( single_entry )' dlls/ntdll/unix/sync.c \
             && echo "patch landed both call sites"
+
+  probes:
+    # Compiling a probe does not exercise the bug the probe exists to catch.
+    # The BOOLEAN syscall-argument regression lives in ntdll, so it only shows
+    # up when dosdev-probe RUNS against a real bundle. That run is
+    # deterministic and takes 15 seconds. So download the published bundle,
+    # install it with the same script a person uses, and run both probes.
+    #
+    # This job asserts the exit code the pinned bundle is known to produce
+    # rather than assuming a pass. That way it tests the probe, not the bundle:
+    # a probe that stopped detecting the bug turns this red.
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      BUNDLE_REPO: EricSpencer00/Whisky
+      BUNDLE_TAG: wine-v26.1.0-foss-phase1l
+      # What run-dosdev-probe.sh must exit with for BUNDLE_TAG. 0 = enumeration
+      # advances, 2 = hung. wine-v26.1.0-foss-phase1l predates the ntdll
+      # syscall-argument fix, so 2 is the right answer for it — the probe
+      # hanging there is the probe working. Set this to 0 when BUNDLE_TAG moves
+      # to a bundle built with the patch.
+      EXPECT_DOSDEV_RC: "2"
+      # A fresh directory, so install-bundle.sh always makes $BOTTLES/probe
+      # instead of reusing a bottle that happens to be there.
+      BOTTLES: /tmp/ci-bottles
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Pin the bundle paths
+        # install-bundle.sh exports WHISKY_LIBS, but that export dies with the
+        # step. Without this the probe steps fall back to the default path and
+        # measure whatever Wine is installed there, not the bundle under test.
+        run: |
+          LIB="$HOME/Library/Application Support/com.isaacmarovitz.Whisky/Libraries"
+          echo "LIB=$LIB" >> "$GITHUB_ENV"
+          echo "WHISKY_LIBS=$LIB/Wine" >> "$GITHUB_ENV"
+
+      - name: Install mingw
+        run: brew install mingw-w64
+
+      - name: Cache Wine bundle
+        id: bundle
+        uses: actions/cache@v4
+        with:
+          path: ~/bundle/Libraries.tar.gz
+          key: wine-bundle-${{ env.BUNDLE_TAG }}
+
+      - name: Download Wine bundle
+        if: steps.bundle.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/bundle
+          curl -fL --retry 3 --max-time 900 -o ~/bundle/Libraries.tar.gz \
+            "https://github.com/$BUNDLE_REPO/releases/download/$BUNDLE_TAG/Libraries.tar.gz"
+
+      - name: Install bundle and make a bottle
+        # --no-verify installs and boots a bottle but leaves the probes to us,
+        # so the two steps below can assert their own result.
+        run: ./Scripts/install-bundle.sh --no-verify ~/bundle/Libraries.tar.gz
+
+      - name: dosdev probe runs
+        run: |
+          rc=0
+          ./Scripts/run-dosdev-probe.sh "$BOTTLES/probe" || rc=$?
+          echo "run-dosdev-probe.sh exit $rc (expected $EXPECT_DOSDEV_RC)"
+          [ "$rc" = "$EXPECT_DOSDEV_RC" ] || {
+            echo "::error::dosdev probe exit $rc, expected $EXPECT_DOSDEV_RC for $BUNDLE_TAG"
+            exit 1
+          }
+
+      - name: d3d11 probe runs
+        # Prints the feature level the bundle exposes. run-d3d11-probe.sh only
+        # fails when the probe produces no result at all, so a level below 11_1
+        # is reported, not treated as a failure.
+        env:
+          WINEPREFIX: /tmp/ci-bottles/probe
+        run: ./Scripts/run-d3d11-probe.sh probe
