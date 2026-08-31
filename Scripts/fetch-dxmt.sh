@@ -33,6 +33,9 @@ WORK_DIR="${WORK_DIR:-$(pwd)/build/wine-build}"
 log() { printf '[dxmt] %s\n' "$*" >&2; }
 
 mkdir -p "$WORK_DIR" "$OUT_DIR/DXMT"
+# build-wine.sh reads this to repeat the warning at the end of the whole build.
+upstream_marker="$WORK_DIR/dxmt-is-upstream"
+rm -f "$upstream_marker"
 tarball="${DXMT_TARBALL:-}"
 if [ -n "$tarball" ]; then
   log "Using $tarball"
@@ -77,6 +80,7 @@ log "Staged at $OUT_DIR/DXMT/ ($(du -sh "$OUT_DIR/DXMT" | cut -f1))"
 
 # Last line of the run, so it does not get buried in the build log.
 if [ "${upstream:-0}" = "1" ]; then
+  : > "$upstream_marker"
   log "=============================================================="
   log "WARNING: this is upstream DXMT ${DXMT_VERSION}, not the fork."
   log "Cross-process presentation does not draw: the Rockstar launcher"

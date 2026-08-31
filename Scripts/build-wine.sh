@@ -555,6 +555,15 @@ Wine built from CrossOver LGPL source. Next steps:
      that matches WhiskyWineVersion.plist.
 
 DONE
+
+  # Last line of the build, so the DXMT warning does not get buried.
+  if [ -f "$WORK_DIR/dxmt-is-upstream" ]; then
+    log "=============================================================="
+    log "WARNING: this bundle has upstream DXMT, not the fork."
+    log "Cross-process presentation does not draw: the Rockstar launcher"
+    log "and anything like it shows a blank window."
+    log "=============================================================="
+  fi
 }
 
 main "$@"
