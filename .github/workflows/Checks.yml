@@ -15,6 +15,9 @@ on:
 
 env:
   CROSSOVER_VERSION: "26.1.0"
+  # SHA256 of crossover-sources-${CROSSOVER_VERSION}.tar.gz. Move both together.
+  # Scripts/build-wine.sh carries the same pin.
+  CROSSOVER_SHA256: "e4ec87d5821a009dd1f1d2e36ffe2e24b8fcbae9516375ea42f95a16928ab8fa"
 
 jobs:
   checks:
@@ -60,6 +63,11 @@ jobs:
         run: |
           curl -fL --retry 3 --max-time 900 -o /tmp/cxsrc.tar.gz \
             "https://media.codeweavers.com/pub/crossover/source/crossover-sources-${CROSSOVER_VERSION}.tar.gz"
+
+      - name: CrossOver source checksum
+        # Not gated on the cache, so a swapped release artifact and a poisoned
+        # cache entry both fail here instead of extracting.
+        run: echo "$CROSSOVER_SHA256  /tmp/cxsrc.tar.gz" | sha256sum -c -
 
       - name: Patches apply cleanly
         run: |
@@ -118,6 +126,8 @@ jobs:
     env:
       BUNDLE_REPO: EricSpencer00/Whisky
       BUNDLE_TAG: wine-v26.1.0-foss-phase1l
+      # SHA256 of Libraries.tar.gz for BUNDLE_TAG. Move both together.
+      BUNDLE_SHA256: "645917a4135c2ce83047186b6a352bf0d03ff785468e0c276db800ae044ab634"
       # What run-dosdev-probe.sh must exit with for BUNDLE_TAG. 0 = enumeration
       # advances, 2 = hung. wine-v26.1.0-foss-phase1l predates the ntdll
       # syscall-argument fix, so 2 is the right answer for it — the probe
@@ -156,6 +166,11 @@ jobs:
           mkdir -p ~/bundle
           curl -fL --retry 3 --max-time 900 -o ~/bundle/Libraries.tar.gz \
             "https://github.com/$BUNDLE_REPO/releases/download/$BUNDLE_TAG/Libraries.tar.gz"
+
+      - name: Wine bundle checksum
+        # Not gated on the cache. The probe steps assert an exit code that only
+        # means something for this exact bundle, so verify it is that bundle.
+        run: echo "$BUNDLE_SHA256  $HOME/bundle/Libraries.tar.gz" | shasum -a 256 -c -
 
       - name: Install bundle and make a bottle
         # --no-verify installs and boots a bottle but leaves the probes to us,

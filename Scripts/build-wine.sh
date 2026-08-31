@@ -25,6 +25,13 @@ set -euo pipefail
 # ---- configurable inputs ----
 CROSSOVER_VERSION="${CROSSOVER_VERSION:-26.1.0}"
 CROSSOVER_SRC_URL="${CROSSOVER_SRC_URL:-https://media.codeweavers.com/pub/crossover/source/crossover-sources-${CROSSOVER_VERSION}.tar.gz}"
+# SHA256 of crossover-sources-<version>.tar.gz, one line per pinned version.
+# Add a line when you move CROSSOVER_VERSION. A version that is not listed
+# downloads with a warning and no check. Keep this in step with the same pin in
+# .github/workflows/Checks.yml.
+CROSSOVER_SHA256SUMS="\
+26.1.0 e4ec87d5821a009dd1f1d2e36ffe2e24b8fcbae9516375ea42f95a16928ab8fa
+"
 
 DXVK_VERSION="${DXVK_VERSION:-}"   # empty = skip DXVK; set e.g. '2.3' to bundle
 DXVK_URL="${DXVK_URL:-}"
@@ -44,11 +51,30 @@ WINE_ARCHS="${WINE_ARCHS:-i386,x86_64}"
 
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
+# Refuse a tarball whose SHA256 does not match the pin. An empty pin means the
+# artifact is not pinned, so warn and continue.
+verify_sha256() {
+  local file="$1" want="$2" got
+  if [ -z "$want" ]; then
+    log "WARNING: $(basename "$file") is not pinned, skipping checksum"
+    return 0
+  fi
+  got=$(shasum -a 256 "$file" | cut -d' ' -f1)
+  [ "$got" = "$want" ] || {
+    log "ERROR: SHA256 mismatch for $file"
+    log "  want $want"
+    log "  got  $got"
+    exit 1
+  }
+  log "SHA256 ok"
+}
+
 # ---- prerequisite check ----
 require() {
   command -v "$1" >/dev/null 2>&1 || { echo "missing: $1 — install via brew" >&2; exit 1; }
 }
 require curl
+require shasum
 require tar
 require make
 require pkg-config
@@ -83,6 +109,11 @@ BREW_LIBS=(
 LLVM_MINGW_VERSION="${LLVM_MINGW_VERSION:-20260407}"
 LLVM_MINGW_TARBALL="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-macos-universal.tar.xz"
 LLVM_MINGW_URL="${LLVM_MINGW_URL:-https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/${LLVM_MINGW_TARBALL}}"
+# SHA256 of llvm-mingw-<version>-ucrt-macos-universal.tar.xz, one line per
+# pinned version. Add a line when you move LLVM_MINGW_VERSION.
+LLVM_MINGW_SHA256SUMS="\
+20260407 801b49549ae39043d7195062eede67916b5ab46318a89e3b8209dc8f49441abb
+"
 
 check_brew() {
   command -v brew >/dev/null 2>&1 || {
@@ -115,6 +146,8 @@ install_llvm_mingw() {
     mkdir -p "$WORK_DIR"
     log "Downloading llvm-mingw ${LLVM_MINGW_VERSION}"
     curl -fL --retry 3 --max-time 600 -o "$WORK_DIR/$LLVM_MINGW_TARBALL" "$LLVM_MINGW_URL"
+    verify_sha256 "$WORK_DIR/$LLVM_MINGW_TARBALL" \
+      "${LLVM_MINGW_SHA256-$(printf '%s' "$LLVM_MINGW_SHA256SUMS" | awk -v v="$LLVM_MINGW_VERSION" '$1 == v { print $2 }')}"
     log "Extracting llvm-mingw"
     rm -rf "$dest"
     mkdir -p "$dest"
@@ -201,6 +234,9 @@ fetch_source() {
     curl -fL --retry 3 --max-time 900 -o "$tarball.part" "$CROSSOVER_SRC_URL"
     mv "$tarball.part" "$tarball"
   fi
+  # CROSSOVER_SHA256= (empty) skips the check, for a custom CROSSOVER_SRC_URL.
+  verify_sha256 "$tarball" \
+    "${CROSSOVER_SHA256-$(printf '%s' "$CROSSOVER_SHA256SUMS" | awk -v v="$CROSSOVER_VERSION" '$1 == v { print $2 }')}"
 
   log "Extracting"
   rm -rf "$WORK_DIR/src"
