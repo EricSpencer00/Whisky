@@ -6,6 +6,10 @@ excluded:
   - .build
   - build
   - build/SourcePackages
+  # One-off diagnostic programs, not part of the app. They are throwaway
+  # measurement tools, so the GPL file header and the app naming rules do not
+  # apply to them. The C probes are not linted either.
+  - Scripts
 
 file_header:
     severity: error
