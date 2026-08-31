@@ -15,8 +15,13 @@
 #   DXMT_TARBALL=/path/to/dxmt-builtin.tar.gz ./Scripts/fetch-dxmt.sh
 #   DXMT_RUN_ID=<fork CI run> ./Scripts/fetch-dxmt.sh
 #
-# With neither, it takes the upstream release, and the Rockstar launcher and
-# anything else presenting cross-process will not draw.
+# The upstream release is still available, but you have to ask for it:
+#
+#   DXMT_ALLOW_UPSTREAM=1 ./Scripts/fetch-dxmt.sh
+#
+# That build does not draw cross-process, so the Rockstar launcher and anything
+# like it shows a blank window. With none of the three variables the script
+# stops instead of picking upstream for you.
 
 set -euo pipefail
 
@@ -42,6 +47,14 @@ elif [ -n "${DXMT_RUN_ID:-}" ]; then
     cp "$found" "$tarball"
   fi
 else
+  if [ "${DXMT_ALLOW_UPSTREAM:-0}" != "1" ]; then
+    log "ERROR: no DXMT build selected."
+    log "       Set DXMT_TARBALL or DXMT_RUN_ID for a fork build, or"
+    log "       DXMT_ALLOW_UPSTREAM=1 to take upstream ${DXMT_VERSION}, which"
+    log "       does not draw cross-process."
+    exit 1
+  fi
+  upstream=1
   tarball="$WORK_DIR/dxmt-${DXMT_VERSION}-builtin.tar.gz"
   if [ ! -f "$tarball" ]; then
     log "Downloading DXMT ${DXMT_VERSION} (upstream; without the fork fixes)"
@@ -61,3 +74,12 @@ done
 rm -rf "$OUT_DIR/DXMT"
 cp -a "$extract" "$OUT_DIR/DXMT"
 log "Staged at $OUT_DIR/DXMT/ ($(du -sh "$OUT_DIR/DXMT" | cut -f1))"
+
+# Last line of the run, so it does not get buried in the build log.
+if [ "${upstream:-0}" = "1" ]; then
+  log "=============================================================="
+  log "WARNING: this is upstream DXMT ${DXMT_VERSION}, not the fork."
+  log "Cross-process presentation does not draw: the Rockstar launcher"
+  log "and anything like it shows a blank window."
+  log "=============================================================="
+fi

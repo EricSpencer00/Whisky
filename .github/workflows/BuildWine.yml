@@ -128,6 +128,9 @@ jobs:
       - name: Build Wine from CrossOver source
         env:
           USE_CCACHE: "1"
+          # CI has no fork DXMT build to point at, so it asks for upstream
+          # explicitly. The bundle it produces does not draw cross-process.
+          DXMT_ALLOW_UPSTREAM: "1"
         run: |
           ./Scripts/build-wine.sh
 
