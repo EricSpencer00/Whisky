@@ -50,12 +50,30 @@ WHISKY_LIBS="${WHISKY_LIBS:-$HOME/Library/Application Support/com.isaacmarovitz.
 CROSSOVER="${CROSSOVER:-/Applications/CrossOver.app/Contents/SharedSupport/CrossOver}"
 DXMT_VERSION="${DXMT_VERSION:-v0.80}"
 DXMT_URL="${DXMT_URL:-https://github.com/3Shain/dxmt/releases/download/${DXMT_VERSION}/dxmt-${DXMT_VERSION}-builtin.tar.gz}"
+# SHA256 of dxmt-<version>-builtin.tar.gz, one line per pinned version. Add a
+# line when you move DXMT_VERSION. Scripts/fetch-dxmt.sh carries the same pin.
+DXMT_SHA256SUMS="\
+v0.80 8f260e36b5739e68f3bad613381441385c4dc7b85b78ba8de653d5a6a264529d
+"
 GPTK="$CROSSOVER/lib64/apple_gptk"
 BUILD_DIR="${BUILD_DIR:-$(pwd)/build/d3d11-probe}"
 MINGW_CC="${MINGW_CC:-x86_64-w64-mingw32-gcc}"
 
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 die() { echo "error: $*" >&2; exit 1; }
+
+# Refuse a tarball whose SHA256 does not match the pin. An empty pin means the
+# artifact is not pinned, so warn and continue.
+verify_sha256() {
+  local file="$1" want="$2" got
+  if [ -z "$want" ]; then
+    log "WARNING: $(basename "$file") is not pinned, skipping checksum"
+    return 0
+  fi
+  got=$(shasum -a 256 "$file" | cut -d' ' -f1)
+  [ "$got" = "$want" ] || die "SHA256 mismatch for $file: want $want, got $got"
+  log "SHA256 ok"
+}
 
 pick_bottle() {
   [ -n "${WINEPREFIX:-}" ] && { echo "$WINEPREFIX"; return; }
@@ -103,11 +121,19 @@ cmd_probe() {
 DXMT_PE="d3d11 dxgi d3d10core nvapi64 nvngx winemetal"
 
 fetch_dxmt() {
-  local dir="$BUILD_DIR/dxmt-$DXMT_VERSION"
+  local dir="$BUILD_DIR/dxmt-$DXMT_VERSION" tarball
   [ -d "$dir/$DXMT_VERSION" ] && { echo "$dir/$DXMT_VERSION"; return; }
   mkdir -p "$dir"
+  # Download to a file rather than piping into tar, so the checksum runs before
+  # anything is extracted.
+  tarball="$dir/dxmt-$DXMT_VERSION-builtin.tar.gz"
   log "downloading DXMT $DXMT_VERSION"
-  curl -fsSL "$DXMT_URL" | tar -xzf - -C "$dir" || die "DXMT download failed"
+  curl -fsSL --retry 3 -o "$tarball.part" "$DXMT_URL" || die "DXMT download failed"
+  mv "$tarball.part" "$tarball"
+  # DXMT_SHA256= (empty) skips the check, for a custom DXMT_URL.
+  verify_sha256 "$tarball" \
+    "${DXMT_SHA256-$(printf '%s' "$DXMT_SHA256SUMS" | awk -v v="$DXMT_VERSION" '$1 == v { print $2 }')}"
+  tar -xzf "$tarball" -C "$dir" || die "DXMT extract failed"
   echo "$dir/$DXMT_VERSION"
 }
 
