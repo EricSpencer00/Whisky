@@ -12,6 +12,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_probes:
+        description: "Run the published-bundle probes (only after BUNDLE_TAG and its checksum are current)"
+        required: false
+        type: boolean
+        default: false
 
 env:
   CROSSOVER_VERSION: "26.3.0"
@@ -112,6 +118,12 @@ jobs:
             && echo "patch landed both call sites"
 
   probes:
+    # This job boots a published Wine bundle. Running it automatically against
+    # a stale pre-fix bundle can hang wineboot for the full timeout and occupy
+    # the only Intel macOS runner needed by BuildWine. BuildWine probes its
+    # freshly assembled bundle before publishing; use this job manually for a
+    # later regression check after updating BUNDLE_TAG and BUNDLE_SHA256.
+    if: github.event_name == 'workflow_dispatch' && inputs.run_probes == true
     # Compiling a probe does not exercise the bug the probe exists to catch.
     # The BOOLEAN syscall-argument regression lives in ntdll, so it only shows
     # up when dosdev-probe RUNS against a real bundle. That run is
