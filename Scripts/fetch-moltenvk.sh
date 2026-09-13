@@ -2,8 +2,8 @@
 #
 # fetch-moltenvk.sh
 #
-# Download MoltenVK 1.4.1 universal dylib + ICD manifest into $OUT_DIR/MoltenVK/.
-# Source: https://github.com/KhronosGroup/MoltenVK/releases/tag/v1.4.1
+# Download MoltenVK 1.4.2 universal dylib + ICD manifest into $OUT_DIR/MoltenVK/.
+# Source: https://github.com/KhronosGroup/MoltenVK/releases/tag/v1.4.2
 # License: Apache-2.0.
 #
 # The Whisky fork bundles MoltenVK inside Libraries.tar.gz so Wine 11's Vulkan
@@ -12,13 +12,13 @@
 
 set -euo pipefail
 
-MOLTENVK_VERSION="${MOLTENVK_VERSION:-1.4.1}"
+MOLTENVK_VERSION="${MOLTENVK_VERSION:-1.4.2}"
 MOLTENVK_URL="${MOLTENVK_URL:-https://github.com/KhronosGroup/MoltenVK/releases/download/v${MOLTENVK_VERSION}/MoltenVK-macos.tar}"
 # SHA256 of MoltenVK-macos.tar, one line per pinned version. Add a line when
 # you move MOLTENVK_VERSION. A version that is not listed downloads with a
 # warning and no check.
 MOLTENVK_SHA256SUMS="\
-1.4.1 5ea0c259df7ded9a275444820f09cced54d6e5a7c7a31d262de62a5cdb7e15cf
+1.4.2 f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e
 "
 OUT_DIR="${OUT_DIR:-$(pwd)/out}"
 WORK_DIR="${WORK_DIR:-$(pwd)/build/wine-build}"

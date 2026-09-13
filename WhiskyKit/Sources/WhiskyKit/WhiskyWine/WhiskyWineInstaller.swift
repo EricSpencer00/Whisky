@@ -80,7 +80,7 @@ public class WhiskyWineInstaller {
            !override.isEmpty {
             return override
         }
-        return "https://data.getwhisky.app/Wine"
+        return "https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.3.0-foss-phase2"
     }
 
     public static func shouldUpdateWhiskyWine() async -> (Bool, SemanticVersion) {

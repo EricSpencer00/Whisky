@@ -23,14 +23,14 @@
 set -euo pipefail
 
 # ---- configurable inputs ----
-CROSSOVER_VERSION="${CROSSOVER_VERSION:-26.1.0}"
+CROSSOVER_VERSION="${CROSSOVER_VERSION:-26.3.0}"
 CROSSOVER_SRC_URL="${CROSSOVER_SRC_URL:-https://media.codeweavers.com/pub/crossover/source/crossover-sources-${CROSSOVER_VERSION}.tar.gz}"
 # SHA256 of crossover-sources-<version>.tar.gz, one line per pinned version.
 # Add a line when you move CROSSOVER_VERSION. A version that is not listed
 # downloads with a warning and no check. Keep this in step with the same pin in
 # .github/workflows/Checks.yml.
 CROSSOVER_SHA256SUMS="\
-26.1.0 e4ec87d5821a009dd1f1d2e36ffe2e24b8fcbae9516375ea42f95a16928ab8fa
+26.3.0 ac99c8ca4b3848f3e81784135f023df266b61c2345726ea55a50b3e030dd6872
 "
 
 DXVK_VERSION="${DXVK_VERSION:-}"   # empty = skip DXVK; set e.g. '2.3' to bundle
@@ -509,7 +509,7 @@ package() {
   <dict>
     <key>build</key><string>community</string>
     <key>major</key><integer>26</integer>
-    <key>minor</key><integer>1</integer>
+    <key>minor</key><integer>3</integer>
     <key>patch</key><integer>0</integer>
     <key>preRelease</key><string></string>
   </dict>
@@ -517,7 +517,7 @@ package() {
 </plist>
 PLIST
 
-  # Fetch + bundle MoltenVK 1.4.1 universal so Wine's Vulkan loader can resolve
+  # Fetch + bundle MoltenVK 1.4.2 universal so Wine's Vulkan loader can resolve
   # libMoltenVK.dylib at runtime without relying on a Homebrew install.
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

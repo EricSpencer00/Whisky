@@ -61,11 +61,11 @@ below lands.
 
 ## Real fix: swap to Wine 11 via the fork's BuildWine
 
-CodeWeavers' `crossover-sources-26.1.0.tar.gz` ships **Wine 11.0** (vs the
+CodeWeavers' `crossover-sources-26.3.0.tar.gz` ships **Wine 11.0** (vs the
 Whisky tarball's 7.7). Wine 11 has four years of
 `IDXGIResource::GetSharedHandle()` and CEF-interop work that Wine 7.7 doesn't.
 A multi-arch (aarch64 + x86_64) Wine 11 Libraries bundle is published as the
-`wine-v26.1.0` Release on this fork.
+`wine-v26.3.0-foss-phase2` Release on this fork.
 
 ### Gotcha: code signing
 
@@ -87,7 +87,7 @@ find "$WHISKY_WINE/lib/wine/aarch64-unix" -name '*.so' -exec codesign --force --
 
 ```bash
 # Point Whisky's first-run installer at the fork's build
-export WHISKY_WINE_BASE_URL="https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.1.0"
+export WHISKY_WINE_BASE_URL="https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.3.0-foss-phase2"
 open /Applications/Whisky.app     # or the locally-built Debug Whisky.app
 # Whisky prompts to re-download WhiskyWine; it pulls the fork-built tarball.
 # Create a fresh bottle, install BeamNG, test.

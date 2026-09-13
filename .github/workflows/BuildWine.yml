@@ -17,15 +17,19 @@ on:
       crossover_version:
         description: "CrossOver source version (from media.codeweavers.com)"
         required: true
-        default: "26.1.0"
+        default: "26.3.0"
       release_tag:
-        description: "Release tag to upload to (e.g. wine-v26.1.0)"
+        description: "Release tag to upload to (e.g. wine-v26.3.0-foss-phase2)"
         required: true
-        default: "wine-v26.1.0"
+        default: "wine-v26.3.0-foss-phase2"
       wine_archs:
         description: "Wine --enable-archs (i386,x86_64 = WoW64; x86_64 = 64-bit only)"
         required: false
         default: "i386,x86_64"
+      dxmt_run_id:
+        description: "Successful EricSpencer00/dxmt Actions run; blank selects the latest successful run"
+        required: false
+        default: ""
   push:
     tags:
       - "wine-v*"
@@ -38,10 +42,10 @@ env:
   # without us having to grep build-wine.sh / fetch-*.sh. CROSSOVER_VERSION
   # honours the workflow_dispatch input override; the rest are tracked here
   # only so cache keys invalidate when we bump them in the scripts.
-  CROSSOVER_VERSION: ${{ github.event.inputs.crossover_version || '26.1.0' }}
+  CROSSOVER_VERSION: ${{ github.event.inputs.crossover_version || '26.3.0' }}
   WINE_ARCHS: ${{ github.event.inputs.wine_archs || 'i386,x86_64' }}
   LLVM_MINGW_VERSION: "20260407"
-  MOLTENVK_VERSION: "1.4.1"
+  MOLTENVK_VERSION: "1.4.2"
   DXVK_VERSION: "2.7.1"
 
 jobs:
@@ -128,10 +132,20 @@ jobs:
       - name: Build Wine from CrossOver source
         env:
           USE_CCACHE: "1"
-          # CI has no fork DXMT build to point at, so it asks for upstream
-          # explicitly. The bundle it produces does not draw cross-process.
-          DXMT_ALLOW_UPSTREAM: "1"
+          # A DXMT_TOKEN secret is needed when GitHub refuses cross-repository
+          # artifact reads with the default repository token. The fallback is
+          # useful for public artifacts and keeps local workflow setup simple.
+          GH_TOKEN: ${{ secrets.DXMT_TOKEN || github.token }}
         run: |
+          # Never silently substitute upstream DXMT: its known cross-process
+          # presentation bug is exactly what this bundle is meant to avoid.
+          dxmt_run_id="${{ github.event.inputs.dxmt_run_id }}"
+          if [ -z "$dxmt_run_id" ]; then
+            dxmt_run_id="$(gh run list --repo EricSpencer00/dxmt --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          [ -n "$dxmt_run_id" ] || { echo "No successful fork DXMT run found" >&2; exit 1; }
+          echo "Using fork DXMT run $dxmt_run_id"
+          echo "DXMT_RUN_ID=$dxmt_run_id" >> "$GITHUB_ENV"
           ./Scripts/build-wine.sh
 
       - name: ccache stats (post-build)
@@ -186,8 +200,9 @@ jobs:
             Full-FOSS Wine + DXVK + MoltenVK bundle. Contents:
 
             - **Wine 11.0** built from CodeWeavers' LGPL-published CrossOver ${{ env.CROSSOVER_VERSION }} source, patched with **Hack 18311** (wined3d-vulkan default on macOS).
-            - **MoltenVK 1.4.1** universal (x86_64 + arm64), advertising Vulkan 1.4 — enough for DXVK 2.7.1's 1.3 requirement.
+            - **MoltenVK 1.4.2** universal (x86_64 + arm64), advertising Vulkan 1.4 — the current upstream release for DXVK 2.7.1.
             - **DXVK 2.7.1** full DLL set (d3d8, d3d9, d3d10core, d3d11, dxgi — x64 + x32).
+            - **DXMT v0.80** from the latest successful build in the EricSpencer00/dxmt fork, selected before compilation.
 
             Sources:
             - Wine / Hack 18311 — https://media.codeweavers.com/pub/crossover/source/ (LGPL-2.1+)
