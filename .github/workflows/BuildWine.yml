@@ -19,9 +19,9 @@ on:
         required: true
         default: "26.3.0"
       release_tag:
-        description: "Release tag to upload to (e.g. wine-v26.3.0-foss-phase2)"
+        description: "Release tag to upload to (e.g. wine-v26.3.0-foss-phase3)"
         required: true
-        default: "wine-v26.3.0-foss-phase2"
+        default: "wine-v26.3.0-foss-phase3"
       wine_archs:
         description: "Wine --enable-archs (i386,x86_64 = WoW64; x86_64 = 64-bit only)"
         required: false
@@ -211,7 +211,7 @@ jobs:
 
             Install the published asset with:
             ```sh
-            ./Scripts/install-bundle.sh --release wine-v26.3.0-foss-phase2
+            ./Scripts/install-bundle.sh --release wine-v26.3.0-foss-phase3
             ```
 
             Sources:

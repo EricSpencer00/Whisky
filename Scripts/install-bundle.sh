@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Installs a BuildWine bundle and the two things it does not contain.
+# Installs and verifies a self-contained BuildWine bundle.
 #
 #   ./Scripts/install-bundle.sh --release            # latest published release
-#   ./Scripts/install-bundle.sh --release wine-v26.3.0-foss-phase2
+#   ./Scripts/install-bundle.sh --release wine-v26.3.0-foss-phase3
 #   ./Scripts/install-bundle.sh Libraries.tar.gz
 #   ./Scripts/install-bundle.sh --run-id 33028180731
 #   ./Scripts/install-bundle.sh --no-verify Libraries.tar.gz
@@ -12,10 +12,9 @@
 # caller that wants to assert its own result can run them itself. It prints the
 # bottle it used on a line that reads "bottle <path>".
 #
-# The tarball BuildWine produces is Wine only. A working stack also needs the
-# MoltenVK symlink (win32u dlopens libvulkan.1.dylib by that name, from that
-# directory, and searches nowhere else) and DXMT's winemetal.so unixlib.
-# Installing the tarball on its own silently downgrades D3D11 to 9_3.
+# The current BuildWine tarball carries Wine, MoltenVK, DXVK, DXMT, the required
+# relative Vulkan symlink, and a manifest tying the versions together. Older
+# Wine-only tarballs are still accepted through the legacy fallback path below.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

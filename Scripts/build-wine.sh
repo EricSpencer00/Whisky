@@ -33,7 +33,7 @@ CROSSOVER_SHA256SUMS="\
 26.3.0 ac99c8ca4b3848f3e81784135f023df266b61c2345726ea55a50b3e030dd6872
 "
 
-DXVK_VERSION="${DXVK_VERSION:-}"   # empty = skip DXVK; set e.g. '2.3' to bundle
+DXVK_VERSION="${DXVK_VERSION:-2.7.1}"
 DXVK_URL="${DXVK_URL:-}"
 
 # "crossover" builds CodeWeavers' tree with our patches — that is the bundle we

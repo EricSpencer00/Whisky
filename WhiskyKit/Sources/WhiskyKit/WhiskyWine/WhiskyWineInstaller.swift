@@ -121,7 +121,7 @@ public class WhiskyWineInstaller {
            !override.isEmpty {
             return override
         }
-        return "https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.3.0-foss-phase2"
+        return "https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.3.0-foss-phase3"
     }
 
     public static func shouldUpdateWhiskyWine() async -> (Bool, SemanticVersion) {
