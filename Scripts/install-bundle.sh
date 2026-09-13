@@ -61,16 +61,40 @@ case "${1:-}" in
 esac
 [ -f "$tarball" ] || { echo "no tarball at $tarball" >&2; exit 1; }
 
+tmpx=$(mktemp -d)
+tar xzf "$tarball" -C "$tmpx"
+src=$(find "$tmpx" -maxdepth 3 -type d -name Wine | head -1)
+[ -d "$src" ] || { echo "no Wine/ inside $tarball" >&2; exit 1; }
+bundle_root="$(dirname "$src")"
+manifest="$bundle_root/WhiskyWineManifest.plist"
+current_bundle=0
+if [ -f "$manifest" ]; then
+  plutil -lint "$manifest" >/dev/null || { echo "invalid WhiskyWineManifest.plist" >&2; exit 1; }
+  current_bundle=1
+  for required in \
+    "$bundle_root/WhiskyWineVersion.plist" \
+    "$bundle_root/MoltenVK/libMoltenVK.dylib" \
+    "$bundle_root/MoltenVK/icd.d/MoltenVK_icd.json" \
+    "$src/bin/wine64" \
+    "$src/bin/wineserver" \
+    "$src/lib/wine/x86_64-unix/winemetal.so" \
+    "$src/lib/wine/x86_64-windows/d3d11.dll" \
+    "$src/lib/wine/x86_64-windows/d3d12.dll" \
+    "$src/lib/wine/x86_64-windows/dxgi.dll"; do
+    [ -e "$required" ] || { echo "current bundle is missing $required" >&2; exit 1; }
+  done
+  link="$src/lib/wine/x86_64-unix/libvulkan.1.dylib"
+  [ -L "$link" ] || { echo "current bundle is missing the MoltenVK symlink" >&2; exit 1; }
+  [ "$(readlink "$link")" = "../../../../MoltenVK/libMoltenVK.dylib" ] || {
+    echo "current bundle has an invalid MoltenVK symlink" >&2
+    exit 1
+  }
+fi
 stamp=$(date +%Y%m%d-%H%M%S)
 if [ -d "$LIB/Wine" ]; then
   log "backing up current Wine to Wine.bak-$stamp"
   mv "$LIB/Wine" "$LIB/Wine.bak-$stamp"
 fi
-
-tmpx=$(mktemp -d)
-tar xzf "$tarball" -C "$tmpx"
-src=$(find "$tmpx" -maxdepth 3 -type d -name Wine | head -1)
-[ -d "$src" ] || { echo "no Wine/ inside $tarball" >&2; exit 1; }
 mkdir -p "$LIB"
 cp -a "$src" "$LIB/Wine"
 log "installed Wine from $tarball"
@@ -78,7 +102,10 @@ log "installed Wine from $tarball"
 # The tarball also carries MoltenVK. A machine that has run Whisky already has
 # it; a CI runner does not, and the symlink below needs the dylib to exist.
 mvk_src=$(find "$tmpx" -maxdepth 3 -type d -name MoltenVK | head -1)
-if [ -n "$mvk_src" ] && [ ! -f "$LIB/MoltenVK/libMoltenVK.dylib" ]; then
+if [ -n "$mvk_src" ]; then
+  if [ -d "$LIB/MoltenVK" ]; then
+    mv "$LIB/MoltenVK" "$LIB/MoltenVK.bak-$stamp"
+  fi
   cp -a "$mvk_src" "$LIB/MoltenVK"
   log "installed MoltenVK from $tarball"
 fi
@@ -116,7 +143,12 @@ log "bottle $prefix"
 # symlink. Doing either step again replaces the bundle's DXMT with the upstream
 # release, which is the one without the cross-process presentation fixes.
 wine_unix="$LIB/Wine/lib/wine/x86_64-unix"
-if [ -e "$wine_unix/libvulkan.1.dylib" ] && [ -f "$wine_unix/winemetal.so" ]; then
+if [ "$current_bundle" = 1 ]; then
+  [ -f "$LIB/MoltenVK/libMoltenVK.dylib" ] || { echo "installed bundle lacks MoltenVK" >&2; exit 1; }
+  [ -f "$wine_unix/winemetal.so" ] || { echo "installed bundle lacks DXMT winemetal.so" >&2; exit 1; }
+  [ -L "$wine_unix/libvulkan.1.dylib" ] || { echo "installed bundle lacks the MoltenVK symlink" >&2; exit 1; }
+  log "bundle manifest and renderer files verified"
+elif [ -e "$wine_unix/libvulkan.1.dylib" ] && [ -f "$wine_unix/winemetal.so" ]; then
   log "bundle is self-contained; nothing to add"
 else
   mvk="$LIB/MoltenVK/libMoltenVK.dylib"

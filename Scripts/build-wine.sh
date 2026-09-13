@@ -565,6 +565,27 @@ package() {
 </plist>
 PLIST
 
+  # Keep the binary stack auditable after it leaves CI. The version plist is
+  # intentionally tiny because Whisky only uses it for update checks; this
+  # manifest records the renderer inputs that must travel with Wine.
+  cat > "$stage/Libraries/WhiskyWineManifest.plist" <<MANIFEST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>wineSource</key><string>${WINE_SOURCE}</string>
+  <key>crossOverSourceVersion</key><string>${CROSSOVER_VERSION}</string>
+  <key>wineArchs</key><string>${WINE_ARCHS}</string>
+  <key>llvmMingwVersion</key><string>${LLVM_MINGW_VERSION}</string>
+  <key>moltenVKVersion</key><string>${MOLTENVK_VERSION:-1.4.2}</string>
+  <key>dxvkVersion</key><string>${DXVK_VERSION:-2.7.1}</string>
+  <key>dxmtVersion</key><string>${DXMT_VERSION:-v0.80}</string>
+  <key>dxmtRunId</key><string>${DXMT_RUN_ID:-}</string>
+  <key>buildRef</key><string>${GITHUB_SHA:-local}</string>
+</dict>
+</plist>
+MANIFEST
+
   # Fetch + bundle MoltenVK 1.4.2 universal so Wine's Vulkan loader can resolve
   # libMoltenVK.dylib at runtime without relying on a Homebrew install.
   local script_dir
