@@ -18,6 +18,11 @@ and pairs it with [DXMT](https://github.com/3Shain/dxmt) (LGPL-2.1) for Direct3D
 No CrossOver, no Apple Game Porting Toolkit, no developer account — every piece is
 redistributable.
 
+The current community bundle uses Wine 11 from CrossOver 26.3.0, MoltenVK 1.4.2,
+DXVK 2.7.1, and the fork's DXMT build. Install it with
+`./Scripts/install-bundle.sh --release` so the bundled Vulkan and Metal pieces stay
+matched to Wine.
+
 **BeamNG.drive 0.38.5 is playable**: 108-128 FPS at 1280x720 on an M1 Max, driving a
 vehicle, with the in-game HTML UI compositing over Direct3D. Direct3D reports feature
 level 11_1 with the real `Apple M1 Max` adapter.
@@ -57,7 +62,7 @@ Debug and profile with ease
 
 ---
 
-Whisky provides a clean and easy to use graphical wrapper for Wine built in native SwiftUI. You can make and manage bottles, install and run Windows apps and games, and unlock the full potential of your Mac with no technical knowledge required. Whisky is built on top of CrossOver 22.1.1, and Apple's own `Game Porting Toolkit`.
+Whisky provides a clean and easy to use graphical wrapper for Wine built in native SwiftUI. You can make and manage bottles, install and run Windows apps and games, and unlock the full potential of your Mac with no technical knowledge required. This fork's redistributable engine is built from CodeWeavers' CrossOver source; Apple's `Game Porting Toolkit` is not required for the FOSS bundle.
 
 Translated on [Crowdin](https://crowdin.com/project/whisky).
 
@@ -89,7 +94,7 @@ Whisky is possible thanks to the magic of several projects:
 - [SemanticVersion](https://github.com/SwiftPackageIndex/SemanticVersion) by SwiftPackageIndex
 - [swift-argument-parser](https://github.com/apple/swift-argument-parser) by Apple
 - [SwiftTextTable](https://github.com/scottrhoyt/SwiftyTextTable) by scottrhoyt
-- [CrossOver 22.1.1](https://www.codeweavers.com/crossover) by CodeWeavers and WineHQ
+- [CrossOver source](https://www.codeweavers.com/crossover/source) by CodeWeavers and WineHQ
 - D3DMetal by Apple
 
 Special thanks to Gcenx, ohaiibuzzle, and Nat Brown for their support and contributions!

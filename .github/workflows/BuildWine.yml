@@ -98,6 +98,7 @@ jobs:
 
           # x86_64 brew at /usr/local for libraries linked into Wine
           if [ ! -x /usr/local/bin/brew ]; then
+            # shellcheck disable=SC2016 # this command substitution belongs to the inner bash
             arch -x86_64 /bin/bash -c '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' < /dev/null
           fi
           arch -x86_64 /usr/local/bin/brew update --auto-update || true

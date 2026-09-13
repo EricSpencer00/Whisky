@@ -3,7 +3,7 @@
 # Installs a BuildWine bundle and the two things it does not contain.
 #
 #   ./Scripts/install-bundle.sh --release            # latest published release
-#   ./Scripts/install-bundle.sh --release wine-v26.1.0
+#   ./Scripts/install-bundle.sh --release wine-v26.3.0-foss-phase2
 #   ./Scripts/install-bundle.sh Libraries.tar.gz
 #   ./Scripts/install-bundle.sh --run-id 33028180731
 #   ./Scripts/install-bundle.sh --no-verify Libraries.tar.gz

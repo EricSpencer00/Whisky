@@ -8,6 +8,11 @@ account. Every component is redistributable.
 **Status:** BeamNG.drive 0.38.5 is playable — 108-128 FPS at 1280x720 on an
 M1 Max, driving a vehicle, with the in-game HTML UI compositing correctly.
 
+The current release is **Wine 11.0 from CrossOver 26.3.0 + MoltenVK 1.4.2 +
+DXVK 2.7.1 + the EricSpencer00/dxmt fork build**. Keep those pieces together;
+mixing the old Wine 10/7.7-era bundle with the newer renderer is the failure mode
+this release path is designed to eliminate.
+
 ## Requirements
 
 - Apple Silicon Mac, macOS 26 or later

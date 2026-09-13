@@ -1,6 +1,6 @@
 # CW HACK 18311: Use the Vulkan renderer for d3d10/11 applications on macOS.
 #
-# Source: CrossOver 26.1.0 LGPL source drop, dlls/wined3d/directx.c.
+# Source: CrossOver 26.3.0 LGPL source drop, dlls/wined3d/directx.c.
 # Extracted against upstream Wine 11.0 (wine-11.0 tag, gitlab.winehq.org/wine/wine).
 # Distributed under LGPL-2.1+ (same license as Wine itself).
 #

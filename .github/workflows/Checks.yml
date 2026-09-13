@@ -43,12 +43,12 @@ jobs:
         # stops a new probe from failing here because it needs -lgdi32.
         run: |
           fail=0
-          for f in $(git ls-files 'Scripts/*.c'); do
+          while IFS= read -r f; do
             echo "--- $f"
-            x86_64-w64-mingw32-gcc -O1 -Wall -o /tmp/$(basename "$f" .c).exe "$f" \
+            x86_64-w64-mingw32-gcc -O1 -Wall -o "/tmp/$(basename "$f" .c).exe" "$f" \
               -lntdll -ld3d11 -ld3d12 -ld3d9 -ldxgi -luuid -lgdi32 2>/tmp/err.txt \
               || { echo "::error file=$f::failed to compile"; cat /tmp/err.txt; fail=1; }
-          done
+          done < <(git ls-files 'Scripts/*.c')
           exit $fail
 
       - name: Cache CrossOver source
