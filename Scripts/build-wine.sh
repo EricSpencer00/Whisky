@@ -395,7 +395,8 @@ build_wine() {
   rm -rf "$build64" "$prefix"
   mkdir -p "$build64" "$prefix"
 
-  # bison/flex are arch-independent — use ARM brew (default on macos-15).
+  # bison/flex are arch-independent, but use the same x86_64 brew prefix as
+  # the libraries so this also works on Intel macos-15 runners.
   export PATH="$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$PATH"
 
   # Library deps must be x86_64 because we configure/build under Rosetta.
