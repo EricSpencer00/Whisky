@@ -38,8 +38,10 @@ cd Whisky
 predates the `BOOLEAN` syscall-argument fix, so the probe reports `### HUNG` and
 the script exits 2.
 
-`install-bundle.sh` exists because the release tarball is **Wine only**.
-Installing it by hand and stopping there drops two things and then fails
+The current release tarball is a **matched Wine + MoltenVK + DXMT bundle**.
+`install-bundle.sh` still owns installation because it validates the bundle and
+keeps the Wine, Vulkan, and Metal pieces together when replacing an older runtime.
+The legacy Wine-only phase-one tarball dropped two things and then failed
 *quietly*, reporting Direct3D feature level 9_3 instead of erroring:
 
 - `lib/wine/x86_64-unix/libvulkan.1.dylib`, a symlink to MoltenVK. `win32u`
@@ -47,7 +49,7 @@ Installing it by hand and stopping there drops two things and then fails
   else.
 - `lib/wine/x86_64-unix/winemetal.so`, DXMT's unixlib.
 
-The script does the tarball, the symlink, DXMT, and then verifies.
+The script installs the tarball and then verifies the matched runtime.
 
 ## Check that it works
 
@@ -93,6 +95,28 @@ The Steam client itself also runs, including its seven CEF helper processes, but
 its own UI hits a DXMT limitation ([3Shain/dxmt#141](https://github.com/3Shain/dxmt/issues/141)),
 so use `steamcmd` for installing and updating.
 
+## Tested game launchers
+
+These launchers make the runtime assumptions explicit instead of depending on a
+particular user's bottle UUID or CrossOver installation:
+
+```sh
+WINEPREFIX=/path/to/bottle \
+BEAMNG_ROOT=/path/to/BeamNG.drive \
+  ./Scripts/play-beamng.sh direct
+
+WINEPREFIX=/path/to/bottle \
+GTA5_ROOT='/path/to/Grand Theft Auto V Legacy' \
+GTA_SAFE_MODE=1 \
+  ./Scripts/play-gtav.sh
+```
+
+BeamNG's direct mode and GTA V Story Mode are the current acceptance paths.
+They require the matched bundle, an Apple Silicon Mac running the x86_64 Wine
+stack under Rosetta, and a legally installed copy of each game. This is not a
+claim that every Windows game will work; anti-cheat, launchers, video codecs,
+and renderer-specific behavior remain game-dependent.
+
 ## Triage when something does not work
 
 Run the two probes above first. They tell you which layer is at fault, which is
@@ -110,7 +134,8 @@ not help.
 
 ## Known limitations
 
-- **Direct3D 12 is not supported.** DXMT implements D3D11 and D3D10.
+- **Direct3D 12 is experimental.** The bundle includes DXMT's D3D12 path and
+  the probe passes, but broad game compatibility is not established.
 - **Direct3D 9 and older** bypass DXMT and go through wined3d and MoltenVK,
   which is a different and much less capable path.
 - **Anti-cheat** (BattlEye, EAC) does not work and is not a goal.
@@ -154,8 +179,8 @@ step, so a bundle that hangs is never published.
 
 ```sh
 gh workflow run BuildWine.yml \
-  -f crossover_version=26.1.0 \
-  -f release_tag=wine-v26.1.0-foss-phase1m \
+  -f crossover_version=26.3.0 \
+  -f release_tag=wine-v26.3.0-foss-phase3 \
   -f dxmt_run_id=<EricSpencer00/dxmt run>
 ```
 

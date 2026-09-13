@@ -1,77 +1,63 @@
 #!/usr/bin/env bash
-# play-beamng.sh — launch BeamNG.drive through Steam running in CrossOver's
-# BeamNG bottle. Assumes:
-#   - CrossOver 26 installed at /Applications/CrossOver.app
-#   - Bottle named 'BeamNG' already set up (by this session's earlier commands)
-#   - Steam is signed in (one-time user step)
+# Launch BeamNG.drive through the Wine/DXMT bundle built by this fork.
 #
-# Run:
-#   ~/bin/play-beamng.sh
-# or:
-#   ~/bin/play-beamng.sh steam    # just launch Steam (to log in once)
+# Required:
+#   WINEPREFIX=/path/to/Whisky/Bottles/<id>
+# Optional:
+#   BEAMNG_ROOT=/path/to/BeamNG.drive
+#
+# Modes:
+#   direct     launch the game without Steam
+#   autostart  launch directly and load the test freeroam scene
+#   steam      launch through the Steam client
 
 set -euo pipefail
 
-CX=/Applications/CrossOver.app/Contents/SharedSupport/CrossOver
-BOTTLE=BeamNG
-BOTTLE_DIR="$HOME/Library/Application Support/CrossOver/Bottles/$BOTTLE"
-MODE="${1:-beamng}"
+LIBRARIES="${WHISKY_LIBRARIES:-$HOME/Library/Application Support/com.isaacmarovitz.Whisky/Libraries}"
+BOTTLE="${WINEPREFIX:-}"
+BEAMNG_ROOT="${BEAMNG_ROOT:-}"
+MODE="${1:-direct}"
+WINE="$LIBRARIES/Wine/bin/wine64"
 
-if [ ! -x "$CX/bin/cxstart" ]; then
-  echo "ERROR: CrossOver not found. Install: brew install --cask crossover" >&2
+[ -n "$BOTTLE" ] || { echo "Set WINEPREFIX to the Whisky bottle to use." >&2; exit 1; }
+[ -x "$WINE" ] || { echo "Wine runtime not found at $WINE" >&2; exit 1; }
+
+if [ -z "$BEAMNG_ROOT" ]; then
+  BEAMNG_ROOT="$BOTTLE/drive_c/steamcmd/steamapps/common/BeamNG.drive"
+fi
+[ -f "$BEAMNG_ROOT/Bin64/BeamNG.drive.x64.exe" ] || {
+  echo "BeamNG.drive.x64.exe not found below $BEAMNG_ROOT" >&2
   exit 1
-fi
-if [ ! -d "$BOTTLE_DIR" ]; then
-  echo "ERROR: BeamNG bottle missing at $BOTTLE_DIR" >&2
-  echo "Create with: $CX/bin/cxbottle --bottle $BOTTLE --create --template win10_64" >&2
-  exit 1
+}
+
+export WINEPREFIX="$BOTTLE"
+export DYLD_FALLBACK_LIBRARY_PATH="$LIBRARIES/Wine/lib:/usr/local/lib:/usr/lib"
+export WINEMSYNC="${WINEMSYNC:-1}"
+export WINEESYNC="${WINEESYNC:-1}"
+export WINEDEBUG="${WINEDEBUG:--all}"
+export MVK_CONFIG_LOG_LEVEL="${MVK_CONFIG_LOG_LEVEL:-0}"
+
+if [ -f "$BEAMNG_ROOT/dxmt.conf" ]; then
+  export DXMT_CONFIG_FILE="$BEAMNG_ROOT/dxmt.conf"
 fi
 
-# Ensure any stale Wine processes from a prior hang are cleaned up
-pkill -9 -f "BeamNG.drive.x64|cxstart|steam\.exe" 2>/dev/null || true
-sleep 1
-
-# Make sure BeamNG is pre-staged in Steam's library (symlinked to the
-# existing Whisky install so Steam sees it as installed without a 30 GB
-# re-download). Idempotent — does nothing if already in place.
-STEAMAPPS="$BOTTLE_DIR/drive_c/Program Files (x86)/Steam/steamapps"
-WHISKY_BNG="$HOME/Library/Containers/com.isaacmarovitz.Whisky/Bottles/8AAFE391-2633-47E7-9655-59BFD9270EF3/drive_c/steamcmd/steamapps"
-mkdir -p "$STEAMAPPS/common"
-if [ ! -e "$STEAMAPPS/common/BeamNG.drive" ] && [ -d "$WHISKY_BNG/common/BeamNG.drive" ]; then
-  ln -s "$WHISKY_BNG/common/BeamNG.drive" "$STEAMAPPS/common/BeamNG.drive"
-fi
-if [ ! -f "$STEAMAPPS/appmanifest_284160.acf" ] && [ -f "$WHISKY_BNG/appmanifest_284160.acf" ]; then
-  cp "$WHISKY_BNG/appmanifest_284160.acf" "$STEAMAPPS/"
-  # Retarget LauncherPath to the CrossOver Steam
-  /usr/bin/sed -i.bak \
-    's|C:\\\\steamcmd\\\\steamcmd.exe|C:\\\\Program Files (x86)\\\\Steam\\\\steam.exe|' \
-    "$STEAMAPPS/appmanifest_284160.acf" || true
-fi
+GAME="$BEAMNG_ROOT/Bin64/BeamNG.drive.x64.exe"
+STEAM="$BOTTLE/drive_c/Program Files (x86)/Steam/steam.exe"
 
 case "$MODE" in
-  steam)
-    echo "Launching Steam in CrossOver bottle '$BOTTLE'. Sign in once."
-    exec "$CX/bin/cxstart" --bottle "$BOTTLE" \
-      'C:\Program Files (x86)\Steam\steam.exe'
-    ;;
-  beamng)
-    echo "Launching BeamNG.drive via Steam URI (steam://run/284160)..."
-    # Launch Steam with a run URL; Steam finds the manifest, launches the
-    # game as its child process. If Steam isn't running this boots it first.
-    exec "$CX/bin/cxstart" --bottle "$BOTTLE" \
-      'C:\Program Files (x86)\Steam\steam.exe' -- -applaunch 284160
-    ;;
   direct)
-    echo "Launching BeamNG.drive directly (no Steam parent) — may hit CEF issues."
-    exec "$CX/bin/cxstart" --bottle "$BOTTLE" \
-      'C:\Program Files (x86)\Steam\steamapps\common\BeamNG.drive\Bin64\BeamNG.drive.x64.exe' \
-      -- -nosteam -noeos
+    exec "$WINE" start /unix "$GAME" -nosteam -noeos
+    ;;
+  autostart)
+    exec "$WINE" start /unix "$GAME" -nosteam -noeos \
+      -lua "extensions.load('autostart')"
+    ;;
+  steam)
+    [ -f "$STEAM" ] || { echo "Steam not found at $STEAM" >&2; exit 1; }
+    exec "$WINE" start /unix "$STEAM" -- -applaunch 284160
     ;;
   *)
-    echo "Usage: $0 [steam|beamng|direct]"
-    echo "  steam   — launch Steam client (for first-time login)"
-    echo "  beamng  — launch BeamNG via Steam (default, recommended)"
-    echo "  direct  — launch BeamNG without Steam parent (fallback)"
-    exit 1
+    echo "Usage: $0 [direct|autostart|steam]" >&2
+    exit 2
     ;;
 esac

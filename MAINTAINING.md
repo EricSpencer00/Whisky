@@ -49,11 +49,12 @@ Developer ID or run via `xattr -dr com.apple.quarantine Whisky.app`).
 
 ## Runtime Wine / GPTK
 
-Whisky downloads its bundled Wine from `https://data.getwhisky.app/Wine/Libraries.tar.gz`
-on first run. The default-served version (`WhiskyWineVersion.plist` → `2.5.0`)
-bundles Wine 7.7 + D3DMetal 2.0 (GPTK 1.x). For newer titles that want the
-D3DMetal 3.0 runtime, the hand-swap recipe is at
-[docs/gptk-3-swap-experiment.md](docs/gptk-3-swap-experiment.md).
+The fork's current release path is the self-contained Wine 11 bundle built from
+CrossOver 26.3.0 source, MoltenVK 1.4.2, DXVK 2.7.1, and the fork's DXMT build.
+`Scripts/install-bundle.sh` installs the pieces as one unit and validates them
+before replacing an existing runtime. The old upstream CDN remains the app's
+fallback for users who have not configured the fork release URL; it serves the
+legacy Wine 7.7-era bundle and is not the release described here.
 
 ### Open-source-from-source story (CrossOver LGPL)
 
@@ -72,7 +73,7 @@ fork uses that directly:
   publishes the tarball + SHA-256 as a release asset on this fork.
 - `WhiskyWineInstaller.swift` reads `WHISKY_WINE_BASE_URL` from the process
   environment. Set that to the fork's release URL (e.g.
-  `https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.1.0`)
+  `https://github.com/EricSpencer00/Whisky/releases/download/wine-v26.3.0-foss-phase3`)
   to pull the FOSS-built tarball instead of the upstream CDN.
 
 **Not bundled, and intentionally so**: Apple's Game Porting Toolkit

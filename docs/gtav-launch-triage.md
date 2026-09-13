@@ -1,8 +1,9 @@
 # GTA V Legacy under the FOSS Wine bundle — launch triage
 
-**STATUS 2026-08-27: WORKING.** GTA V Legacy boots and renders through DXMT on
-the FOSS Wine 11 bundle. Reached the Display Calibration screen (first-boot
-setup) with a real `Grand Theft Auto V` window. See "How to launch it" below.
+**STATUS 2026-09-13: WORKING.** GTA V Legacy reaches and runs Story Mode through
+DXMT on the FOSS Wine 11 bundle. The old loading-screen hang documented below is
+historical and should not be used as the current acceptance result. See "How to
+launch it" below and use `Scripts/play-gtav.sh` for the explicit runtime setup.
 
 The history of dead ends is kept because most of it is still true and stops the
 next session re-walking it.
@@ -341,7 +342,7 @@ earlier privileged-instruction fault did not recur after msync/config changes
 were staged — unproven whether it was mods or sync, test with dinput8 removed if
 it returns.
 
-## Story-mode entry hang — unresolved as of 2026-08-28
+## Historical story-mode entry hang — resolved in the current release path
 
 Vanilla GTA V boots, renders the menus and the loading screen, reaches
 "Entering Story Mode", and hangs there. It never enters the world. Measured

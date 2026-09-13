@@ -40,9 +40,9 @@ long-form record, including the wrong turns.
 
 Two things worth knowing before you invest:
 
-- The release tarball is **Wine only**. Installing it without the MoltenVK symlink and
-  DXMT silently falls back to feature level 9_3 rather than failing. Use
-  `Scripts/install-bundle.sh`.
+- The release tarball is a **matched Wine + MoltenVK + DXMT bundle**. Use
+  `Scripts/install-bundle.sh`; it validates the runtime before replacing an older
+  install and refuses an incomplete bundle.
 - Everything here is x86_64 under Rosetta 2, which Apple is removing in macOS 28
   (fall 2027). See issue #20.
 
