@@ -396,7 +396,7 @@ build_wine() {
   mkdir -p "$build64" "$prefix"
 
   # bison/flex are arch-independent, but use the same x86_64 brew prefix as
-  # the libraries so this also works on Intel macos-15 runners.
+  # the libraries so this also works on the macos-15-intel runner.
   export PATH="$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$PATH"
 
   # Library deps must be x86_64 because we configure/build under Rosetta.
@@ -412,7 +412,7 @@ build_wine() {
     log "WARN: no x86_64 brew at /usr/local; falling back to $BREW_PREFIX (must contain x86_64 dylibs)"
   fi
   # PKG_CONFIG_LIBDIR REPLACES the compiled-in default search path. Without
-  # this, pkg-config (running from ARM brew on macos-15) falls back to
+  # this, pkg-config (running from an ARM brew on an arm64 shell) falls back to
   # /opt/homebrew when resolving transitive deps like glib-2.0.pc — and the
   # linker then pulls ARM dylibs into the x86_64 build (winegstreamer fails
   # with "ld: warning: ignoring file libglib-2.0.dylib: arch arm64").

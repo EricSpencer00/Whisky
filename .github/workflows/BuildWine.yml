@@ -52,7 +52,9 @@ env:
 
 jobs:
   build:
-    runs-on: macos-15
+    # The bundle is x86_64 Wine. Use the Intel runner so Homebrew, Rosetta
+    # assumptions, and the produced binaries all agree on one architecture.
+    runs-on: macos-15-intel
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v5
@@ -88,8 +90,8 @@ jobs:
 
       - name: Install build deps
         # Wine is built x86_64-only under Rosetta (matches upstream Whisky's
-        # bundle layout). Use the x86_64 brew prefix for both tools and
-        # libraries; macos-15 runners are Intel and cannot run /opt/homebrew.
+        # bundle layout). Use the native x86_64 brew prefix for both tools and
+        # libraries; macos-15 is arm64, so it is intentionally not used here.
         run: |
           # x86_64 brew at /usr/local for libraries linked into Wine
           if [ ! -x /usr/local/bin/brew ]; then

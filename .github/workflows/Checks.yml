@@ -121,7 +121,9 @@ jobs:
     # This job asserts the exit code the pinned bundle is known to produce
     # rather than assuming a pass. That way it tests the probe, not the bundle:
     # a probe that stopped detecting the bug turns this red.
-    runs-on: macos-15
+    # The bundle and probes are x86_64; validate them on the matching Intel
+    # image instead of relying on an implicit Rosetta path on arm64.
+    runs-on: macos-15-intel
     timeout-minutes: 30
     env:
       BUNDLE_REPO: EricSpencer00/Whisky
