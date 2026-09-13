@@ -46,19 +46,60 @@ public class WhiskyWineInstaller {
     }
 
     public static func install(from: URL) {
+        let fileManager = FileManager.default
+        let supportFolder = applicationFolder.deletingLastPathComponent()
+        let stagingFolder = supportFolder.appending(path: ".WhiskyWine.staging-\(UUID().uuidString)")
+        let backupFolder = supportFolder.appending(path: ".WhiskyWine.backup-\(UUID().uuidString)")
+        var movedExistingInstallation = false
+
         do {
-            if !FileManager.default.fileExists(atPath: applicationFolder.path) {
-                try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
-            } else {
-                // Recreate it
-                try FileManager.default.removeItem(at: applicationFolder)
-                try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: stagingFolder, withIntermediateDirectories: true)
+            try Tar.untar(tarBall: from, toURL: stagingFolder)
+            try validateBundle(at: stagingFolder)
+
+            if fileManager.fileExists(atPath: applicationFolder.path) {
+                try fileManager.moveItem(at: applicationFolder, to: backupFolder)
+                movedExistingInstallation = true
             }
 
-            try Tar.untar(tarBall: from, toURL: applicationFolder)
-            try FileManager.default.removeItem(at: from)
+            do {
+                try fileManager.moveItem(at: stagingFolder, to: applicationFolder)
+            } catch {
+                if movedExistingInstallation {
+                    try? fileManager.moveItem(at: backupFolder, to: applicationFolder)
+                }
+                throw error
+            }
+
+            if movedExistingInstallation {
+                try? fileManager.removeItem(at: backupFolder)
+            }
+            try? fileManager.removeItem(at: from)
         } catch {
+            try? fileManager.removeItem(at: stagingFolder)
             print("Failed to install WhiskyWine: \(error)")
+        }
+    }
+
+    private static func validateBundle(at root: URL) throws {
+        let requiredFiles = [
+            root.appending(path: "Libraries/WhiskyWineVersion.plist"),
+            root.appending(path: "Libraries/Wine/bin/wine64"),
+            root.appending(path: "Libraries/Wine/bin/wineserver"),
+            root.appending(path: "Libraries/Wine/lib/wine/x86_64-unix/winemetal.so"),
+            root.appending(path: "Libraries/MoltenVK/libMoltenVK.dylib"),
+            root.appending(path: "Libraries/MoltenVK/icd.d/MoltenVK_icd.json")
+        ]
+
+        for file in requiredFiles {
+            guard FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) else {
+                throw "Wine bundle is missing \(file.path(percentEncoded: false))"
+            }
+        }
+
+        let wine64 = root.appending(path: "Libraries/Wine/bin/wine64")
+        guard FileManager.default.isExecutableFile(atPath: wine64.path(percentEncoded: false)) else {
+            throw "Wine bundle contains a non-executable wine64"
         }
     }
 

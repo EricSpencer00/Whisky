@@ -259,15 +259,7 @@ public class Wine {
     private static func constructWineServerEnvironment(
         for bottle: Bottle, environment: [String: String] = [:]
     ) -> [String: String] {
-        var result: [String: String] = [
-            "WINEPREFIX": bottle.url.path,
-            "WINEDEBUG": "fixme-all",
-            "GST_DEBUG": "1"
-        ]
-        result.merge(vulkanEnvironment(), uniquingKeysWith: { $1 })
-        guard !environment.isEmpty else { return result }
-        result.merge(environment, uniquingKeysWith: { $1 })
-        return result
+        return constructWineEnvironment(for: bottle, environment: environment)
     }
 }
 
