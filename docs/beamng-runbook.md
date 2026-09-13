@@ -1,5 +1,12 @@
 # BeamNG.drive runbook (Whisky, macOS 26, Apple Silicon)
 
+> **SUPERSEDED (2026-04-17 document).** This describes the state before the
+> open-source stack worked, and its recommendation — use CrossOver — costs money
+> and is no longer necessary. BeamNG.drive is playable today on Wine 11 + DXMT
+> with nothing paid in the stack.
+>
+> Start at **[foss-bundle-usage.md](foss-bundle-usage.md)**. Kept for the record.
+
 This is the current state of BeamNG.drive support on the community-maintained
 Whisky fork, and the concrete steps to get the furthest-currently-possible.
 

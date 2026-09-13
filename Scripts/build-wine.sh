@@ -25,6 +25,13 @@ set -euo pipefail
 # ---- configurable inputs ----
 CROSSOVER_VERSION="${CROSSOVER_VERSION:-26.1.0}"
 CROSSOVER_SRC_URL="${CROSSOVER_SRC_URL:-https://media.codeweavers.com/pub/crossover/source/crossover-sources-${CROSSOVER_VERSION}.tar.gz}"
+# SHA256 of crossover-sources-<version>.tar.gz, one line per pinned version.
+# Add a line when you move CROSSOVER_VERSION. A version that is not listed
+# downloads with a warning and no check. Keep this in step with the same pin in
+# .github/workflows/Checks.yml.
+CROSSOVER_SHA256SUMS="\
+26.1.0 e4ec87d5821a009dd1f1d2e36ffe2e24b8fcbae9516375ea42f95a16928ab8fa
+"
 
 DXVK_VERSION="${DXVK_VERSION:-}"   # empty = skip DXVK; set e.g. '2.3' to bundle
 DXVK_URL="${DXVK_URL:-}"
@@ -44,11 +51,30 @@ WINE_ARCHS="${WINE_ARCHS:-i386,x86_64}"
 
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
 
+# Refuse a tarball whose SHA256 does not match the pin. An empty pin means the
+# artifact is not pinned, so warn and continue.
+verify_sha256() {
+  local file="$1" want="$2" got
+  if [ -z "$want" ]; then
+    log "WARNING: $(basename "$file") is not pinned, skipping checksum"
+    return 0
+  fi
+  got=$(shasum -a 256 "$file" | cut -d' ' -f1)
+  [ "$got" = "$want" ] || {
+    log "ERROR: SHA256 mismatch for $file"
+    log "  want $want"
+    log "  got  $got"
+    exit 1
+  }
+  log "SHA256 ok"
+}
+
 # ---- prerequisite check ----
 require() {
   command -v "$1" >/dev/null 2>&1 || { echo "missing: $1 — install via brew" >&2; exit 1; }
 }
 require curl
+require shasum
 require tar
 require make
 require pkg-config
@@ -83,6 +109,11 @@ BREW_LIBS=(
 LLVM_MINGW_VERSION="${LLVM_MINGW_VERSION:-20260407}"
 LLVM_MINGW_TARBALL="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-macos-universal.tar.xz"
 LLVM_MINGW_URL="${LLVM_MINGW_URL:-https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/${LLVM_MINGW_TARBALL}}"
+# SHA256 of llvm-mingw-<version>-ucrt-macos-universal.tar.xz, one line per
+# pinned version. Add a line when you move LLVM_MINGW_VERSION.
+LLVM_MINGW_SHA256SUMS="\
+20260407 801b49549ae39043d7195062eede67916b5ab46318a89e3b8209dc8f49441abb
+"
 
 check_brew() {
   command -v brew >/dev/null 2>&1 || {
@@ -115,6 +146,8 @@ install_llvm_mingw() {
     mkdir -p "$WORK_DIR"
     log "Downloading llvm-mingw ${LLVM_MINGW_VERSION}"
     curl -fL --retry 3 --max-time 600 -o "$WORK_DIR/$LLVM_MINGW_TARBALL" "$LLVM_MINGW_URL"
+    verify_sha256 "$WORK_DIR/$LLVM_MINGW_TARBALL" \
+      "${LLVM_MINGW_SHA256-$(printf '%s' "$LLVM_MINGW_SHA256SUMS" | awk -v v="$LLVM_MINGW_VERSION" '$1 == v { print $2 }')}"
     log "Extracting llvm-mingw"
     rm -rf "$dest"
     mkdir -p "$dest"
@@ -201,6 +234,9 @@ fetch_source() {
     curl -fL --retry 3 --max-time 900 -o "$tarball.part" "$CROSSOVER_SRC_URL"
     mv "$tarball.part" "$tarball"
   fi
+  # CROSSOVER_SHA256= (empty) skips the check, for a custom CROSSOVER_SRC_URL.
+  verify_sha256 "$tarball" \
+    "${CROSSOVER_SHA256-$(printf '%s' "$CROSSOVER_SHA256SUMS" | awk -v v="$CROSSOVER_VERSION" '$1 == v { print $2 }')}"
 
   log "Extracting"
   rm -rf "$WORK_DIR/src"
@@ -267,8 +303,25 @@ patch_source() {
   local boolabi="$script_dir/patches/ntdll-boolean-syscall-arg-abi.patch"
   apply_patch "$boolabi" "$wine_src" "BOOLEAN syscall-argument ABI fix"
 
+  # WQL compares a CIM_STRING property against an unquoted integer literal as
+  # pointer-vs-integer, so `WHERE DeviceId=0` never matches and the query
+  # returns no rows. See docs/app-triage.md.
+  local wql="$script_dir/patches/wbemprox-string-int-compare.patch"
+  apply_patch "$wql" "$wine_src" "WQL string/int comparison"
+
   grep -q 'syscall_bool_arg( restart )' "$wine_src/dlls/ntdll/unix/sync.c" || {
     log "ERROR: syscall_bool_arg missing from sync.c after patching"
+    exit 1
+  }
+
+  # Backport: dbghelp faults on a zero divisor while evaluating a DWARF
+  # expression, so any program that loads it for a crash handler dies at
+  # startup. GZDoom does. Fixed upstream after the tree we build from.
+  local dwarfdiv="$script_dir/patches/dbghelp-dwarf-divide-guard.patch"
+  apply_patch "$dwarfdiv" "$wine_src" "dbghelp DWARF divide guard"
+
+  grep -q 'Attempting to divide by zero' "$wine_src/dlls/dbghelp/dwarf.c" || {
+    log "ERROR: DWARF divide guard missing from dwarf.c after patching"
     exit 1
   }
 }
@@ -479,6 +532,29 @@ PLIST
   OUT_DIR="$OUT_DIR" WORK_DIR="$WORK_DIR" bash "$script_dir/fetch-dxvk.sh"
   mkdir -p "$stage/Libraries/DXVK"
   cp -R "$OUT_DIR/DXVK"/* "$stage/Libraries/DXVK/"
+
+  # Fetch + overlay DXMT. The tarball is the whole runtime: extracting it is
+  # the only install step. Fetching DXMT at install time instead is how the
+  # bundle silently ended up on wined3d twice.
+  log "Fetching DXMT"
+  OUT_DIR="$OUT_DIR" WORK_DIR="$WORK_DIR" bash "$script_dir/fetch-dxmt.sh"
+  local wl="$stage/Libraries/Wine/lib/wine"
+  # d3d12 has to come from DXMT too: its dxgi replaces Wine's, and vkd3d reaches
+  # the Vulkan device through an interface only Wine's DXGI answers, so leaving
+  # Wine's d3d12 in place means no D3D12 at all.
+  # winemetal is two halves: the PE dll and the unix .so are built together and
+  # a mismatched pair fails with "winemetal.dll failed to initialize".
+  for n in d3d11 d3d12 dxgi d3d10core d3d10 d3d10_1 nvapi64 nvngx winemetal; do
+    [ -f "$OUT_DIR/DXMT/x86_64-windows/$n.dll" ] && \
+      cp "$OUT_DIR/DXMT/x86_64-windows/$n.dll" "$wl/x86_64-windows/$n.dll"
+    [ -f "$OUT_DIR/DXMT/i386-windows/$n.dll" ] && [ -d "$wl/i386-windows" ] && \
+      cp "$OUT_DIR/DXMT/i386-windows/$n.dll" "$wl/i386-windows/$n.dll"
+  done
+  cp "$OUT_DIR/DXMT/x86_64-unix/winemetal.so" "$wl/x86_64-unix/"
+
+  # win32u dlopens libvulkan.1.dylib by that name from this directory and
+  # searches nowhere else. Relative so the bundle survives being moved.
+  ln -sf ../../../../MoltenVK/libMoltenVK.dylib "$wl/x86_64-unix/libvulkan.1.dylib"
 
   # Ad-hoc codesign so the unsigned wine binaries don't get SIGKILL'd by
   # macOS hardened runtime at launch. Users who have a Developer ID should

@@ -14,10 +14,34 @@ set -euo pipefail
 
 MOLTENVK_VERSION="${MOLTENVK_VERSION:-1.4.1}"
 MOLTENVK_URL="${MOLTENVK_URL:-https://github.com/KhronosGroup/MoltenVK/releases/download/v${MOLTENVK_VERSION}/MoltenVK-macos.tar}"
+# SHA256 of MoltenVK-macos.tar, one line per pinned version. Add a line when
+# you move MOLTENVK_VERSION. A version that is not listed downloads with a
+# warning and no check.
+MOLTENVK_SHA256SUMS="\
+1.4.1 5ea0c259df7ded9a275444820f09cced54d6e5a7c7a31d262de62a5cdb7e15cf
+"
 OUT_DIR="${OUT_DIR:-$(pwd)/out}"
 WORK_DIR="${WORK_DIR:-$(pwd)/build/wine-build}"
 
 log() { printf '[moltenvk] %s\n' "$*" >&2; }
+
+# Refuse a tarball whose SHA256 does not match the pin. An empty pin means the
+# artifact is not pinned, so warn and continue.
+verify_sha256() {
+  local file="$1" want="$2" got
+  if [ -z "$want" ]; then
+    log "WARNING: $(basename "$file") is not pinned, skipping checksum"
+    return 0
+  fi
+  got=$(shasum -a 256 "$file" | cut -d' ' -f1)
+  [ "$got" = "$want" ] || {
+    log "ERROR: SHA256 mismatch for $file"
+    log "  want $want"
+    log "  got  $got"
+    exit 1
+  }
+  log "SHA256 ok"
+}
 
 mkdir -p "$WORK_DIR" "$OUT_DIR/MoltenVK/icd.d"
 tarball="$WORK_DIR/MoltenVK-macos-${MOLTENVK_VERSION}.tar"
@@ -26,6 +50,9 @@ if [ ! -f "$tarball" ]; then
   curl -fL --retry 3 --max-time 600 -o "$tarball.part" "$MOLTENVK_URL"
   mv "$tarball.part" "$tarball"
 fi
+want_sha=$(printf '%s' "$MOLTENVK_SHA256SUMS" | awk -v v="$MOLTENVK_VERSION" '$1 == v { print $2 }')
+# MOLTENVK_SHA256= (empty) skips the check, for a custom MOLTENVK_URL.
+verify_sha256 "$tarball" "${MOLTENVK_SHA256-$want_sha}"
 
 extract="$WORK_DIR/MoltenVK-extract"
 rm -rf "$extract"

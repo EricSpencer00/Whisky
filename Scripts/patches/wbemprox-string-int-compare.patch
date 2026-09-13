@@ -1,0 +1,32 @@
+# WQL: compare a string property against an unquoted integer literal.
+#
+# is_strcmp() only treated a comparison as a string comparison when the literal
+# side was EXPR_SVAL, i.e. quoted. A query like
+#
+#     SELECT * FROM MSFT_PhysicalDisk WHERE DeviceId=0
+#
+# writes the literal unquoted, so it parses as EXPR_IVAL, the guard fails, and
+# eval_binary falls through to the numeric path. There the CIM_STRING property
+# is a pointer, comparing it against 0 never matches, and the query returns no
+# rows where Windows returns one. eval_binary already formats an integer side
+# into a string, so only the guard has to admit the case.
+#
+# Found while tracing GTA V, which walks MSFT_Volume -> MSFT_Partition ->
+# MSFT_PhysicalDisk. This makes the query return a row; it does NOT stop that
+# game crashing, which happens at the same address either way.
+--- a/dlls/wbemprox/query.c
++++ b/dlls/wbemprox/query.c
+@@ -178,9 +178,11 @@
+ static inline BOOL is_strcmp( const struct complex_expr *expr, UINT ltype, UINT rtype )
+ {
+     if ((ltype == CIM_STRING || is_int( ltype )) && expr->left->type == EXPR_PROPVAL &&
+-        expr->right->type == EXPR_SVAL) return TRUE;
++        (expr->right->type == EXPR_SVAL ||
++         (ltype == CIM_STRING && expr->right->type == EXPR_IVAL))) return TRUE;
+     else if ((rtype == CIM_STRING || is_int( rtype )) && expr->right->type == EXPR_PROPVAL &&
+-             expr->left->type == EXPR_SVAL) return TRUE;
++             (expr->left->type == EXPR_SVAL ||
++              (rtype == CIM_STRING && expr->left->type == EXPR_IVAL))) return TRUE;
+     return FALSE;
+ }
+ 
