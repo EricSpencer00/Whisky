@@ -20,12 +20,18 @@ M1 Max, driving a vehicle, with the in-game HTML UI compositing correctly.
 git clone https://github.com/EricSpencer00/Whisky
 cd Whisky
 
-# Download the prebuilt bundle from the latest release, install it, and add DXMT
-./Scripts/install-bundle.sh --run-id <id-of-a-successful-BuildWine-run>
+# Download the latest release, install it, and check it
+./Scripts/install-bundle.sh --release
 
-# or, if you already have Libraries.tar.gz
+# or a specific tag, a CI run, or a tarball you already have
+./Scripts/install-bundle.sh --release <tag>
+./Scripts/install-bundle.sh --run-id <id-of-a-successful-BuildWine-run>
 ./Scripts/install-bundle.sh path/to/Libraries.tar.gz
 ```
+
+`--release` needs a release newer than `wine-v26.1.0-foss-phase1l`. That one
+predates the `BOOLEAN` syscall-argument fix, so the probe reports `### HUNG` and
+the script exits 2.
 
 `install-bundle.sh` exists because the release tarball is **Wine only**.
 Installing it by hand and stopping there drops two things and then fails
@@ -135,3 +141,26 @@ easy to get wrong:
   first. Without that the trace is silently empty and looks like a clean run.
 
 When an app misbehaves, see the `wine-app-triage` skill in `.claude/skills/`.
+
+## Publishing a bundle
+
+Building it and publishing it are the same run. The probes gate the release
+step, so a bundle that hangs is never published.
+
+```sh
+gh workflow run BuildWine.yml \
+  -f crossover_version=26.1.0 \
+  -f release_tag=wine-v26.1.0-foss-phase1m \
+  -f dxmt_run_id=<EricSpencer00/dxmt run>
+```
+
+Leave `dxmt_run_id` blank and the bundle gets DXMT's upstream release, which has
+no cross-process presentation — the Rockstar Games Launcher will not draw. Using
+it needs a `DXMT_TOKEN` secret, because the default token cannot read another
+repository.
+
+It takes 1-3 hours. Then check the release the way a user would:
+
+```sh
+./Scripts/install-bundle.sh --release <tag>
+```

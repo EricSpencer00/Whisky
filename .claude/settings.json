@@ -16,6 +16,8 @@
       "Bash(gh api:*)",
       "Bash(bash -n:*)",
       "Bash(x86_64-w64-mingw32-gcc:*)",
+      "Bash(shasum:*)",
+      "Bash(./Scripts/build-wine.sh:*)",
       "Bash(./Scripts/install-bundle.sh:*)",
       "Bash(./Scripts/run-dosdev-probe.sh:*)",
       "Bash(./Scripts/triage-app.sh:*)",

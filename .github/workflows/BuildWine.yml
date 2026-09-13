@@ -47,6 +47,8 @@ env:
   LLVM_MINGW_VERSION: "20260407"
   MOLTENVK_VERSION: "1.4.2"
   DXVK_VERSION: "2.7.1"
+  DXMT_VERSION: "v0.80"
+  DXMT_RUN_ID: ${{ github.event.inputs.dxmt_run_id || '' }}
 
 jobs:
   build:
@@ -67,7 +69,8 @@ jobs:
             build/wine-build/llvm-mingw-*.tar.xz
             build/wine-build/MoltenVK-macos-*.tar
             build/wine-build/dxvk-*.tar.gz
-          key: wine-sources-${{ env.CROSSOVER_VERSION }}-${{ env.LLVM_MINGW_VERSION }}-${{ env.MOLTENVK_VERSION }}-${{ env.DXVK_VERSION }}
+            build/wine-build/dxmt-*.tar.gz
+          key: wine-sources-${{ env.CROSSOVER_VERSION }}-${{ env.LLVM_MINGW_VERSION }}-${{ env.MOLTENVK_VERSION }}-${{ env.DXVK_VERSION }}-${{ env.DXMT_VERSION }}-${{ env.DXMT_RUN_ID }}
 
       - name: Cache Homebrew downloads
         # The x86_64 brew install at /usr/local pulls its bottles cold every
@@ -135,7 +138,7 @@ jobs:
           # A DXMT_TOKEN secret is needed when GitHub refuses cross-repository
           # artifact reads with the default repository token. The fallback is
           # useful for public artifacts and keeps local workflow setup simple.
-          GH_TOKEN: ${{ secrets.DXMT_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.DXMT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           # Never silently substitute upstream DXMT: its known cross-process
           # presentation bug is exactly what this bundle is meant to avoid.
@@ -197,15 +200,23 @@ jobs:
             out/Libraries.tar.gz
             out/Libraries.tar.gz.sha256
           body: |
-            Full-FOSS Wine + DXVK + MoltenVK bundle. Contents:
+            Wine, DXMT, DXVK and MoltenVK, all redistributable. No CrossOver licence, no Game Porting Toolkit, no developer account. BeamNG.drive runs at 108-128 FPS at 1280x720 on an M1 Max.
 
             - **Wine 11.0** built from CodeWeavers' LGPL-published CrossOver ${{ env.CROSSOVER_VERSION }} source, patched with **Hack 18311** (wined3d-vulkan default on macOS).
             - **MoltenVK 1.4.2** universal (x86_64 + arm64), advertising Vulkan 1.4 — the current upstream release for DXVK 2.7.1.
             - **DXVK 2.7.1** full DLL set (d3d8, d3d9, d3d10core, d3d11, dxgi — x64 + x32).
             - **DXMT v0.80** from the latest successful build in the EricSpencer00/dxmt fork, selected before compilation.
 
+            The bundle also carries the MoltenVK symlink and DXMT unixlib. Both probes run against the tarball before it is published: `dosdev-probe` must pass, and D3D11 must report feature level `0xb100`.
+
+            Install the published asset with:
+            ```sh
+            ./Scripts/install-bundle.sh --release wine-v26.3.0-foss-phase2
+            ```
+
             Sources:
             - Wine / Hack 18311 — https://media.codeweavers.com/pub/crossover/source/ (LGPL-2.1+)
+            - DXMT — https://github.com/3Shain/dxmt (LGPL-2.1+)
             - MoltenVK — https://github.com/KhronosGroup/MoltenVK (Apache-2.0)
             - DXVK — https://github.com/doitsujin/dxvk (zlib)
 

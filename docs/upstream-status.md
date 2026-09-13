@@ -1,7 +1,9 @@
 # Upstream status: BOOLEAN syscall arguments
 
-**Not filed upstream. Recommendation: do not file yet.** Two of three
-confirmations fail. Details below so the next person does not have to redo them.
+**Not filed upstream. Recommendation: do not file yet.** One of three
+confirmations fails. Details below so the next person does not have to redo
+them. The text to send once it clears is in
+[upstream-boolean-syscall-arg.md](upstream-boolean-syscall-arg.md).
 
 ## What is established
 
@@ -29,40 +31,52 @@ Both are legal: MS x64 leaves the high bits of a sub-word argument undefined,
 System V requires the caller to extend them. Upstream master is unchanged in
 both files (`ULONG index = restart ? 0 : *context;`, `movq (%r15),%r8`).
 
-## Why not to file
+## Cleared, 30 Aug 2026
 
-**1. Never reproduced on a stock upstream build.** Everything above ran on
-CrossOver 26.1.0's tree with our Hack 18311 patch, x86_64 under Rosetta 2 on
-macOS/aarch64. Upstream master's *source* is identical, and the compiler
-behaviour is reproduced with stock compilers, but that is assembling the
-mechanism from parts — not an end-to-end reproduction on stock Wine.
+**2. Upstream CI does build x86_64 PE with llvm-mingw.**
+`tools/gitlab/build-linux-arm64` runs
+`configure --enable-archs=i386,x86_64,aarch64,arm64ec,arm --with-mingw=clang
+CC=clang` with `/usr/local/llvm-mingw/bin` on PATH, so the x86_64 PE files in
+that job come from clang. What no job has is a clang-built x86_64 PE side over
+an x86_64 unix side: `tools/gitlab/build-mac` uses `--with-mingw` with brew's
+gcc-mingw-w64, and the arm64 job's unix side is aarch64. So the toolchain is one
+they build, the pairing is one they never run. That makes the question worth
+asking rather than out of scope. Rosetta 2 is still untested by them.
 
-**2. This is not a configuration upstream tests.** Wine's CI uses
-gcc-mingw-w64 for x86_64; llvm-mingw appears only in the arm64 job
-(`tools/gitlab/build-linux-arm64`, `--with-mingw=clang CC=clang`). x86_64 PE +
-llvm-mingw is possible per their docs but untested by them. Rosetta 2 on Apple
-Silicon is not tested by them at all.
+**3. No prior report.** `bugs.winehq.org` sits behind an Anubis proof-of-work
+check and returns the challenge page to `curl`, so the tracker was searched
+through a search engine restricted to that domain rather than through its own
+query form. Nothing matches. The nearest is bug 50189, "Multiple 64-bit
+applications crash with Wine MinGW PE build due to violation of Windows 64-bit
+ABI" — the same family, a different rule, and about stack alignment. Also not it:
+`tmatthies/wine mr/syscalls-sysv_abi`, five commits from Dec 2022 that formalise
+the unix side as explicitly `sysv_abi`. It never landed — 23,360 commits behind —
+and it does not address argument narrowing. This is a search, not an exhaustive
+one.
 
-**3. Prior art only partly cleared.** No matching report found, and the one
-adjacent branch turned out not to be it: `tmatthies/wine mr/syscalls-sysv_abi`
-is five commits from Dec 2022 (`include: Add SYSCALL calling convention`,
-`ntdll/win32u: Make syscalls use the SYSCALL calling convention`,
-`ntdll: Make syscall functions sysv_abi on x64`) which formalise the unix side
-as explicitly `sysv_abi`. It never landed — 23,360 commits behind — and it does
-not address argument narrowing. But `bugs.winehq.org` search returns 403 to
-automated fetches, so the tracker has not actually been searched.
+## What is still open
 
-## What would close it
+**1. Never reproduced on a stock upstream build.** Everything under "What is
+established" ran on CrossOver 26.1.0's tree with our Hack 18311 patch, x86_64
+under Rosetta 2 on macOS/aarch64. Upstream master's *source* is identical and
+the compiler behaviour is reproduced with stock compilers, but that assembles
+the mechanism from parts. `build-wine.sh` can now build the stock tree:
 
-1. Search `bugs.winehq.org` by hand for the dispatcher and argument extension.
-2. Check whether upstream considers x86_64 PE + llvm-mingw supported. The macOS
-   section of their README asks for "clang 3.8 ... and mingw-w64 v8", which is
-   ambiguous about which mingw.
-3. Build stock upstream master with `--with-mingw=clang` on x86_64 and reproduce
-   the hang with no CrossOver tree and no local patches.
+```sh
+WINE_SOURCE=upstream WINE_UPSTREAM_REF=master ./Scripts/build-wine.sh
+./Scripts/install-bundle.sh --no-verify out/Libraries.tar.gz
+./Scripts/run-dosdev-probe.sh
+```
 
-If all three clear, the contribution is a question on wine-devel about whether
-x86_64 + llvm-mingw is supported — not a patch. The fix belongs in the
-dispatcher or in making the unix entry points `ms_abi`; the fork-local narrowing
-in `Scripts/patches/ntdll-boolean-syscall-arg-abi.patch` does not scale to the
-40 syscalls that take a sub-word argument.
+It has not been run. It takes 1-3 hours and about 10 GB.
+
+If it prints `### HUNG`, send the mail in
+[upstream-boolean-syscall-arg.md](upstream-boolean-syscall-arg.md) — a question
+on wine-devel about whether x86_64 PE + llvm-mingw is supported, not a patch.
+The fix belongs in the dispatcher or in making the unix entry points `ms_abi`;
+the fork-local narrowing in
+`Scripts/patches/ntdll-boolean-syscall-arg-abi.patch` does not scale to the 40
+syscalls that take a sub-word argument.
+
+If it prints `### PASS`, the hang needs something CodeWeavers' tree adds, the
+bug is ours, and nothing goes upstream.

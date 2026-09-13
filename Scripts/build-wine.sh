@@ -36,6 +36,12 @@ CROSSOVER_SHA256SUMS="\
 DXVK_VERSION="${DXVK_VERSION:-}"   # empty = skip DXVK; set e.g. '2.3' to bundle
 DXVK_URL="${DXVK_URL:-}"
 
+# "crossover" builds CodeWeavers' tree with our patches — that is the bundle we
+# ship. "upstream" builds stock Wine with no patch at all, for reproducing a bug
+# on a tree upstream will accept as their own.
+WINE_SOURCE="${WINE_SOURCE:-crossover}"
+WINE_UPSTREAM_REF="${WINE_UPSTREAM_REF:-master}"
+
 # Output locations
 WORK_DIR="${WORK_DIR:-$(pwd)/build/wine-build}"
 OUT_DIR="${OUT_DIR:-$(pwd)/out}"
@@ -226,7 +232,48 @@ setup_ccache() {
 }
 
 # ---- fetch source ----
+# Stock upstream Wine, no fork patches. This is what docs/upstream-status.md
+# needs before the BOOLEAN syscall-argument bug can be reported to Wine: the
+# same llvm-mingw toolchain and the same Rosetta host, on a tree CodeWeavers
+# has not touched.
+fetch_upstream_source() {
+  local tarball="$WORK_DIR/wine-${WINE_UPSTREAM_REF}.tar.gz"
+  local url="https://codeload.github.com/wine-mirror/wine/tar.gz/refs/heads/${WINE_UPSTREAM_REF}"
+  case "$WINE_UPSTREAM_REF" in
+    wine-*) url="https://codeload.github.com/wine-mirror/wine/tar.gz/refs/tags/${WINE_UPSTREAM_REF}" ;;
+  esac
+
+  mkdir -p "$WORK_DIR"
+  # A branch moves, so a cached copy of it is a different tree with the same
+  # name — the one thing this build must not get wrong. Tags are cached.
+  case "$WINE_UPSTREAM_REF" in wine-*) ;; *) rm -f "$tarball" ;; esac
+  if [ ! -f "$tarball" ]; then
+    log "Downloading upstream Wine ${WINE_UPSTREAM_REF}"
+    curl -fL --retry 3 --max-time 900 -o "$tarball.part" "$url"
+    mv "$tarball.part" "$tarball"
+  fi
+
+  log "Extracting"
+  rm -rf "$WORK_DIR/src"
+  mkdir -p "$WORK_DIR/src"
+  tar -xzf "$tarball" -C "$WORK_DIR/src" --strip-components=1
+
+  # Wine commits `configure` but generates every Makefile.in, so a tree taken
+  # from git needs the generators that upstream CI runs before configure.
+  if [ ! -f "$WORK_DIR/src/Makefile.in" ]; then
+    log "Generating makefiles"
+    ( cd "$WORK_DIR/src" && ./tools/make_requests && ./tools/make_specfiles && ./tools/make_makefiles )
+    command -v autoreconf >/dev/null 2>&1 && ( cd "$WORK_DIR/src" && autoreconf -f )
+  fi
+  log "upstream tree, no patches applied"
+}
+
 fetch_source() {
+  if [ "$WINE_SOURCE" = upstream ]; then
+    fetch_upstream_source
+    return
+  fi
+
   local tarball="$WORK_DIR/crossover-sources-${CROSSOVER_VERSION}.tar.gz"
   mkdir -p "$WORK_DIR"
   if [ ! -f "$tarball" ]; then
@@ -574,6 +621,11 @@ PLIST
 
 # ---- main ----
 main() {
+  if [ "$WINE_SOURCE" = upstream ]; then
+    log "source: upstream Wine $WINE_UPSTREAM_REF, unpatched"
+  else
+    log "source: CrossOver $CROSSOVER_VERSION, patched"
+  fi
   check_brew
   install_llvm_mingw
   setup_ccache

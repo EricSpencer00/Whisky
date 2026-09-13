@@ -3,6 +3,16 @@
 Nothing here has been filed. Each entry says what it is and whether I think it
 should go anywhere.
 
+## Wine: BOOLEAN syscall arguments — written, one test short of sending
+
+Draft in [upstream-boolean-syscall-arg.md](upstream-boolean-syscall-arg.md). It
+is a question to wine-devel, not a patch: does upstream support x86_64 PE built
+with llvm-mingw?
+
+Two of the three checks now pass. The last one needs a stock upstream build,
+which `WINE_SOURCE=upstream ./Scripts/build-wine.sh` will produce in 1-3 hours.
+Nothing goes out until that build hangs the probe.
+
 ## Wine dbghelp DWARF divide — do not file
 
 Already fixed upstream, after the CrossOver 26.1.0 tree we build from. Our

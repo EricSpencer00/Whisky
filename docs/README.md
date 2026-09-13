@@ -12,6 +12,7 @@ background or record.
 | [app-triage.md](app-triage.md) | how to find where an app breaks, the capability map, what works today |
 | [open-source-roadmap.md](open-source-roadmap.md) | the full record, newest sections last |
 | [upstream-status.md](upstream-status.md) | the syscall-argument bug, and why it is not filed upstream |
+| [upstream-boolean-syscall-arg.md](upstream-boolean-syscall-arg.md) | the report itself, ready to send, and the one test still to run |
 
 ## What runs today
 
